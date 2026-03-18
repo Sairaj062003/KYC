@@ -1,0 +1,70 @@
+const { embed } = require('../config/ollama');
+const { upsertPoints } = require('../config/vectorDb');
+
+/**
+ * Generate vector embeddings for a KYC document and phone number,
+ * then store both as points in the Qdrant vector database.
+ *
+ * Two separate embeddings are created:
+ * 1. Document embedding — combines extracted name, PAN, and document type
+ * 2. Phone embedding — embeds the phone number for suspicious-number detection
+ *
+ * @param {string} kycId - UUID of the KYC document record
+ * @param {{ full_name: string|null, pan_number: string|null, dob: string|null, document_type: string|null }} extractedData
+ * @param {string} phoneNumber - User's validated phone number
+ */
+async function generateAndStore(kycId, extractedData, phoneNumber) {
+  // Build text strings for embedding
+  const docText = [
+    extractedData.full_name,
+    extractedData.pan_number,
+    extractedData.document_type,
+  ]
+    .filter(Boolean) // Remove null/undefined values
+    .join(' ');
+
+  const phoneText = phoneNumber || '';
+
+  // Generate embeddings in parallel for efficiency
+  const [docEmbedding, phoneEmbedding] = await Promise.all([
+    docText ? embed(docText) : embed('unknown document'),
+    phoneText ? embed(phoneText) : null,
+  ]);
+
+  // Build points array for Qdrant upsert
+  const points = [];
+
+  // Point 1: Document embedding
+  points.push({
+    id: `${kycId}_doc`,
+    vector: docEmbedding,
+    payload: {
+      kycId,
+      type: 'document',
+      full_name: extractedData.full_name,
+      pan_number: extractedData.pan_number,
+      dob: extractedData.dob,
+      document_type: extractedData.document_type,
+    },
+  });
+
+  // Point 2: Phone embedding (only if phone number is available)
+  if (phoneEmbedding) {
+    points.push({
+      id: `${kycId}_phone`,
+      vector: phoneEmbedding,
+      payload: {
+        kycId,
+        type: 'phone',
+        phoneNumber,
+      },
+    });
+  }
+
+  // Upsert points into Qdrant (collection auto-created if missing)
+  await upsertPoints(points);
+
+  console.log(`[Embedding] Stored ${points.length} vectors for KYC ${kycId}`);
+}
+
+module.exports = { generateAndStore };

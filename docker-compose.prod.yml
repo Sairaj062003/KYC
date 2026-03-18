@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: always
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/kyc-ai-frontend:latest
+    environment:
+      - NEXT_PUBLIC_API_URL=/api
+    depends_on:
+      - backend
+    restart: always
+
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/kyc-ai-backend:latest
+    env_file: ./backend/.env
+    volumes:
+      - kyc_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vector-db:
+        condition: service_started
+      ollama:
+        condition: service_started
+    restart: always
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/db/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  vector-db:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull llama3 && ollama pull nomic-embed-text && wait"]
+    restart: always
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  ollama_models:
+  kyc_uploads:
