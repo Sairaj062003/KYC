@@ -1,5 +1,9 @@
+const { v5: uuidv5 } = require('uuid');
 const pool = require('../config/db');
 const { getPoints, searchSimilar } = require('../config/vectorDb');
+
+// Deterministic UUID namespace (must match embedding.service.js)
+const KYC_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
 const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD) || 0.85;
 

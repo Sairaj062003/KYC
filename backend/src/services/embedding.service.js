@@ -34,9 +34,10 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
   // Build points array for Qdrant upsert
   const points = [];
 
-  // Point 1: Document embedding
+  // Point 1: Document embedding (using deterministic UUID)
+  const docPointId = uuidv5(`${kycId}_doc`, KYC_NAMESPACE);
   points.push({
-    id: `${kycId}_doc`,
+    id: docPointId,
     vector: docEmbedding,
     payload: {
       kycId,
@@ -48,10 +49,11 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
     },
   });
 
-  // Point 2: Phone embedding (only if phone number is available)
+  // Point 2: Phone embedding (using deterministic UUID)
   if (phoneEmbedding) {
+    const phonePointId = uuidv5(`${kycId}_phone`, KYC_NAMESPACE);
     points.push({
-      id: `${kycId}_phone`,
+      id: phonePointId,
       vector: phoneEmbedding,
       payload: {
         kycId,

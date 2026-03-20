@@ -10,7 +10,7 @@ const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
 
 const ollamaClient = axios.create({
   baseURL: OLLAMA_BASE_URL,
-  timeout: 60000, // 60s timeout for LLM generation
+  timeout: 180000, // Increased to 180s for slow VM environments
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -18,10 +18,10 @@ const ollamaClient = axios.create({
  * Generate text using Ollama's /api/generate endpoint.
  * @param {string} prompt - The prompt to send
  * @param {string} model - Model name (defaults to OLLAMA_MODEL)
- * @param {number} timeout - Request timeout in ms (default 30000)
+ * @param {number} timeout - Request timeout in ms (default 120000)
  * @returns {string} Generated text response
  */
-async function generate(prompt, model = OLLAMA_MODEL, timeout = 30000) {
+async function generate(prompt, model = OLLAMA_MODEL, timeout = 120000) {
   const response = await ollamaClient.post('/api/generate', {
     model,
     prompt,
