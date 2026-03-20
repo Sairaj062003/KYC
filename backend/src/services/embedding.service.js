@@ -1,5 +1,9 @@
+const { v5: uuidv5 } = require('uuid');
 const { embed } = require('../config/ollama');
 const { upsertPoints } = require('../config/vectorDb');
+
+// Deterministic UUID namespace (randomly generated for this project)
+const KYC_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
 /**
  * Generate vector embeddings for a KYC document and phone number,

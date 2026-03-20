@@ -25,9 +25,9 @@ async function checkDuplicates(kycId) {
   let highestScore = 0;
 
   try {
-    // Retrieve the stored embeddings for this KYC submission
-    const docPointId = `${kycId}_doc`;
-    const phonePointId = `${kycId}_phone`;
+    // Retrieve the stored embeddings for this KYC submission using deterministic UUIDs
+    const docPointId = uuidv5(`${kycId}_doc`, KYC_NAMESPACE);
+    const phonePointId = uuidv5(`${kycId}_phone`, KYC_NAMESPACE);
 
     const points = await getPoints([docPointId, phonePointId]);
 
