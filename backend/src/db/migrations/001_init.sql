@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS kyc_documents (
   original_name    VARCHAR(255),
   document_type    VARCHAR(50),            -- 'aadhaar' | 'pan' | 'passport'
   extracted_name   VARCHAR(255),
-  pan_number       VARCHAR(20),
+  pan_number       VARCHAR(50),
   dob              DATE,
   status           VARCHAR(50) NOT NULL DEFAULT 'pending',
                    -- pending | processing | extracted | approved | rejected | reupload_requested | extraction_failed

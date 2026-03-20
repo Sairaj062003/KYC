@@ -107,12 +107,24 @@ async function extractStructuredData(rawText) {
  * @param {Object} parsed - Parsed JSON from LLM
  * @returns {Object} Normalized result with all fields
  */
+/**
+ * Normalize and sanitize the parsed result to ensure DB safety.
+ * @param {Object} parsed - Parsed JSON from LLM
+ * @returns {Object} Normalized result
+ */
 function normalizeResult(parsed) {
+  let dob = parsed.dob || null;
+  // Basic date validation (YYYY-MM-DD or similar)
+  if (dob && isNaN(Date.parse(dob))) {
+    console.warn(`[LLM] Invalid DOB format extracted: ${dob}`);
+    dob = null;
+  }
+
   return {
-    full_name: parsed.full_name || null,
-    pan_number: parsed.pan_number || null,
-    dob: parsed.dob || null,
-    document_type: parsed.document_type || null,
+    full_name: parsed.full_name ? String(parsed.full_name).substring(0, 255) : null,
+    pan_number: parsed.pan_number ? String(parsed.pan_number).replace(/[^A-Z0-9]/gi, '').toUpperCase().substring(0, 20) : null,
+    dob: dob,
+    document_type: parsed.document_type ? String(parsed.document_type).substring(0, 50) : null,
   };
 }
 
