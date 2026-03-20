@@ -60,6 +60,22 @@ async function convertPdfToImage(pdfPath) {
 }
 
 /**
+ * Preprocess an image to improve OCR accuracy.
+ * Converts to grayscale, normalizes contrast, and sharpens.
+ * @param {string} inputPath - Path to the original image
+ * @returns {string} Path to the preprocessed temporary image
+ */
+async function preprocessImage(inputPath) {
+  const outputPath = inputPath.replace(/(\.[\w\d]+)$/i, '_preprocessed$1');
+  await sharp(inputPath)
+    .grayscale()
+    .normalize() // Stretch contrast
+    .sharpen()
+    .toFile(outputPath);
+  return outputPath;
+}
+
+/**
  * Extract text from an image or PDF file using Tesseract OCR.
  * For PDF files, the first page is converted to an image first.
  * Implements retry logic (up to 3 attempts).
