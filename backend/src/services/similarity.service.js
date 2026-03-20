@@ -44,10 +44,9 @@ async function checkDuplicates(kycId) {
       const results = await searchSimilar(point.vector, 6, {
         must_not: [
           {
-            key: 'kycId',
-            match: { value: kycId },
-          },
-        ],
+            has_id: [docPointId, phonePointId]
+          }
+        ]
       });
 
       // Find the highest score among results
