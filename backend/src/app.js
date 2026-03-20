@@ -14,6 +14,10 @@ const authRoutes = require('./routes/auth.routes');
 const kycRoutes = require('./routes/kyc.routes');
 const adminRoutes = require('./routes/admin.routes');
 
+// Import and run DB initialization
+const initDb = require('./db/initDb');
+initDb();
+
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
