@@ -78,7 +78,7 @@ function parseJsonResponse(responseText) {
 async function extractStructuredData(rawText) {
   // First attempt with standard prompt
   try {
-    const response = await generate(buildExtractionPrompt(rawText), undefined, 30000);
+    const response = await generate(buildExtractionPrompt(rawText), undefined, 120000);
     const parsed = parseJsonResponse(response);
     return normalizeResult(parsed);
   } catch (firstErr) {
@@ -87,7 +87,7 @@ async function extractStructuredData(rawText) {
 
   // Retry with stricter prompt
   try {
-    const response = await generate(buildStrictPrompt(rawText), undefined, 30000);
+    const response = await generate(buildStrictPrompt(rawText), undefined, 120000);
     const parsed = parseJsonResponse(response);
     return normalizeResult(parsed);
   } catch (retryErr) {
