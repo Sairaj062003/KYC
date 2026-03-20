@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const sharp = require('sharp');
 
 const execAsync = promisify(exec);
 
@@ -77,13 +78,26 @@ async function extractText(filePath) {
     tempImage = imagePath; // Track for cleanup
   }
 
+  // Preprocess the image (even for converted PDFs) to improve accuracy
+  const preprocessedPath = await preprocessImage(imagePath);
+  const finalImagePath = preprocessedPath;
+
   // Run OCR with retry logic
   const text = await withRetry(async () => {
-    const result = await Tesseract.recognize(imagePath, 'eng', {
+    const result = await Tesseract.recognize(finalImagePath, 'eng', {
       logger: () => {}, // Suppress progress logs in production
     });
     return result.data.text;
   }, 3, 1000);
+
+  // Clean up temporary preprocessed image
+  if (fs.existsSync(preprocessedPath)) {
+    try {
+      fs.unlinkSync(preprocessedPath);
+    } catch (cleanupErr) {
+      console.warn('[OCR] Failed to clean up preprocessed image:', cleanupErr.message);
+    }
+  }
 
   // Clean up temporary converted image
   if (tempImage && fs.existsSync(tempImage)) {
