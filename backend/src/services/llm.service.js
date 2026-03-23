@@ -15,6 +15,7 @@ Do not include any explanation or text outside the JSON object.
 Fields to extract:
 - full_name: string (person's full name)
 - pan_number: string (10-char alphanumeric PAN, e.g. ABCDE1234F)
+- aadhaar_number: string (12-digit UID code)
 - dob: string (date of birth in YYYY-MM-DD format)
 - document_type: string (one of: "aadhaar", "pan", "passport", "other")
 
@@ -31,9 +32,9 @@ Return only JSON:`;
  */
 function buildStrictPrompt(rawText) {
   return `You MUST return ONLY a valid JSON object. No markdown, no explanation, no extra text.
-The JSON must have exactly these keys: full_name, pan_number, dob, document_type.
+The JSON must have exactly these keys: full_name, pan_number, aadhaar_number, dob, document_type.
 Use null for any field not found. Example format:
-{"full_name": "John Doe", "pan_number": "ABCDE1234F", "dob": "1990-01-15", "document_type": "pan"}
+{"full_name": "John Doe", "pan_number": "ABCDE1234F", "aadhaar_number": "123456789012", "dob": "1990-01-15", "document_type": "pan"}
 
 OCR Text:
 """
@@ -123,6 +124,7 @@ function normalizeResult(parsed) {
   return {
     full_name: parsed.full_name ? String(parsed.full_name).substring(0, 255) : null,
     pan_number: parsed.pan_number ? String(parsed.pan_number).replace(/[^A-Z0-9]/gi, '').toUpperCase().substring(0, 20) : null,
+    aadhaar_number: parsed.aadhaar_number ? String(parsed.aadhaar_number).replace(/\s/g, '').substring(0, 20) : null,
     dob: dob,
     document_type: parsed.document_type ? String(parsed.document_type).substring(0, 50) : null,
   };

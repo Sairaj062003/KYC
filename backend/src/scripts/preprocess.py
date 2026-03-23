@@ -19,13 +19,16 @@ def preprocess(input_path, output_path):
     # Thresholding to facilitate deskewing
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     coords = np.column_stack(np.where(binary > 0))
-    angle = cv2.minAreaRect(coords)[-1]
     
-    # Correct angle calculation
-    if angle < -45:
-        angle = -(90 + angle)
+    if len(coords) > 0:
+        angle = cv2.minAreaRect(coords)[-1]
+        # Correct angle calculation
+        if angle < -45:
+            angle = -(90 + angle)
+        else:
+            angle = -angle
     else:
-        angle = -angle
+        angle = 0
         
     (h, w) = gray.shape
     center = (w // 2, h // 2)

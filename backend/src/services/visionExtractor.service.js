@@ -85,7 +85,12 @@ async function extractWithVisionLLM(imagePath) {
             });
 
             // Anthropic returns text which might need parsing if it's not strictly JSON
-            const text = res.data.content[0].text;
+            let text = res.data.content[0].text;
+            // Extract JSON block if present
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                text = jsonMatch[0];
+            }
             return JSON.parse(text);
         }
 
