@@ -14,7 +14,7 @@ const KYC_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
  * 2. Phone embedding — embeds the phone number for suspicious-number detection
  *
  * @param {string} kycId - UUID of the KYC document record
- * @param {{ full_name: string|null, pan_number: string|null, dob: string|null, document_type: string|null }} extractedData
+ * @param {{ full_name: string|null, pan_number: string|null, aadhaar_number: string|null, dob: string|null, document_type: string|null }} extractedData
  * @param {string} phoneNumber - User's validated phone number
  */
 async function generateAndStore(kycId, extractedData, phoneNumber) {
@@ -22,6 +22,7 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
   const docText = [
     extractedData.full_name,
     extractedData.pan_number,
+    extractedData.aadhaar_number,
     extractedData.document_type,
   ]
     .filter(Boolean) // Remove null/undefined values
@@ -48,6 +49,7 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
       type: 'document',
       full_name: extractedData.full_name,
       pan_number: extractedData.pan_number,
+      aadhaar_number: extractedData.aadhaar_number,
       dob: extractedData.dob,
       document_type: extractedData.document_type,
     },
