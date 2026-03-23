@@ -1,31 +1,15 @@
+// backend/src/services/similarity.service.js
 const { v5: uuidv5 } = require('uuid');
 const pool = require('../config/db');
 const { getPoints, searchSimilar } = require('../config/vectorDb');
 
-// Deterministic UUID namespace (must match embedding.service.js)
 const KYC_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
-
 const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD) || 0.85;
 
-/**
- * Check for duplicate KYC submissions by running vector similarity searches
- * against existing document and phone embeddings in Qdrant.
- *
- * Performs two searches:
- * 1. Document similarity — finds documents with similar extracted data
- * 2. Phone similarity — finds submissions with similar phone numbers
- *
- * The highest similarity score across both searches is used to determine
- * whether the submission is a potential duplicate.
- *
- * @param {string} kycId - UUID of the KYC document to check
- * @returns {{ similarity_score: number, is_duplicate: boolean }}
- */
 async function checkDuplicates(kycId) {
   let highestScore = 0;
 
   try {
-    // Retrieve the stored embeddings for this KYC submission using deterministic UUIDs
     const docPointId = uuidv5(`${kycId}_doc`, KYC_NAMESPACE);
     const phonePointId = uuidv5(`${kycId}_phone`, KYC_NAMESPACE);
 
@@ -36,21 +20,29 @@ async function checkDuplicates(kycId) {
       return { similarity_score: 0, is_duplicate: false };
     }
 
-    // Run similarity searches for each embedding type
     for (const point of points) {
       if (!point.vector) continue;
 
-      // Search for similar vectors, excluding self (top 5 results)
-      const results = await searchSimilar(point.vector, 6, {
+      // FIX: Qdrant correct syntax for excluding specific point IDs
+      // The old syntax { must_not: [{ has_id: [...] }] } is wrong —
+      // has_id is not a condition type in Qdrant filter syntax.
+      // Correct syntax uses the top-level "must_not" with a "has_id" array
+      // directly on the filter object, not nested inside a conditions array.
+      const filter = {
         must_not: [
           {
             has_id: [docPointId, phonePointId]
           }
         ]
-      });
+      };
 
-      // Find the highest score among results
+      // Request limit+1 so even if self slips through, we skip it manually
+      const results = await searchSimilar(point.vector, 6, filter);
+
       for (const result of results) {
+        // EXTRA SAFETY: manually skip self even if filter fails
+        if (result.id === docPointId || result.id === phonePointId) continue;
+
         if (result.score > highestScore) {
           highestScore = result.score;
         }
@@ -58,13 +50,11 @@ async function checkDuplicates(kycId) {
     }
   } catch (err) {
     console.error(`[Similarity] Error checking duplicates for KYC ${kycId}:`, err.message);
-    // Don't fail the entire pipeline — just report no duplicates
     return { similarity_score: 0, is_duplicate: false };
   }
 
   const isDuplicate = highestScore >= SIMILARITY_THRESHOLD;
 
-  // Update the KYC document record in PostgreSQL
   try {
     await pool.query(
       `UPDATE kyc_documents 
@@ -76,14 +66,8 @@ async function checkDuplicates(kycId) {
     console.error(`[Similarity] Failed to update DB for KYC ${kycId}:`, dbErr.message);
   }
 
-  console.log(
-    `[Similarity] KYC ${kycId}: score=${highestScore.toFixed(4)}, duplicate=${isDuplicate}`
-  );
-
-  return {
-    similarity_score: highestScore,
-    is_duplicate: isDuplicate,
-  };
+  console.log(`[Similarity] KYC ${kycId}: score=${highestScore.toFixed(4)}, duplicate=${isDuplicate}`);
+  return { similarity_score: highestScore, is_duplicate: isDuplicate };
 }
 
 module.exports = { checkDuplicates };

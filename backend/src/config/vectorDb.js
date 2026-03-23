@@ -56,17 +56,21 @@ async function upsertPoints(points) {
  */
 async function searchSimilar(vector, limit = 5, filter = null) {
   await ensureCollection();
+
   const body = {
     vector,
     limit,
     with_payload: true,
+    with_vector: false,   // don't return vectors in results — saves bandwidth
   };
+
   if (filter) body.filter = filter;
 
   const response = await qdrantClient.post(
     `/collections/${COLLECTION_NAME}/points/search`,
     body
   );
+
   return response.data.result || [];
 }
 
@@ -79,9 +83,19 @@ async function getPoints(ids) {
   await ensureCollection();
   const response = await qdrantClient.post(
     `/collections/${COLLECTION_NAME}/points`,
-    { ids, with_vector: true, with_payload: true }
+    { ids, with_vector: true, with_payload: true }  // with_vector: true is critical
   );
-  return response.data.result || [];
+
+  const results = response.data.result || [];
+
+  // Log warning if vectors are missing — indicates a Qdrant version issue
+  results.forEach(point => {
+    if (!point.vector) {
+      console.warn(`[Qdrant] Point ${point.id} returned without vector — check Qdrant version`);
+    }
+  });
+
+  return results;
 }
 
 module.exports = {
