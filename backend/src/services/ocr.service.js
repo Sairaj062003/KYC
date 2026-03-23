@@ -103,7 +103,9 @@ async function extractText(filePath) {
     const result = await Tesseract.recognize(finalImagePath, 'eng+hin', {
       tessedit_pageseg_mode: '6',
       preserve_interword_spaces: '1',
-      logger: () => {}, // Suppress progress logs in production
+      workerPath: '/usr/share/tesseract-ocr/4.00/tessdata', // Hint for local data path
+      langPath: 'https://tessdata.projectnaptha.com/4.0.0_best', // Fallback URL
+      logger: () => {}, 
     });
     return result.data.text;
   }, 3, 1000);
