@@ -1,7 +1,7 @@
 // backend/src/services/visionExtractor.service.js
 const fs = require('fs');
 const axios = require('axios');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 const SYSTEM_PROMPT = `You are an Indian identity document OCR specialist.
 Extract fields from the provided ID card image (Aadhaar/PAN/Passport).
@@ -14,61 +14,31 @@ Return ONLY a valid JSON object with NO markdown, NO explanation, just raw JSON.
   "document_type": "pan" | "aadhaar" | "passport" | null
 }
 Rules:
-- PAN format: 5 uppercase letters + 4 digits + 1 uppercase letter (e.g. ABCDE1234F)
-- Aadhaar: 12 digits, ignore spaces (e.g. "1234 5678 9012" → "123456789012")
-- DOB: convert any date format to YYYY-MM-DD
+- PAN format: 5 uppercase letters + 4 digits + 1 letter (e.g. ABCDE1234F)
+- Aadhaar: 12 digits, strip spaces (e.g. "1234 5678 9012" -> "123456789012")
+- DOB: convert any format to YYYY-MM-DD
 - Use null for any field you cannot read clearly.`;
-
-async function extractWithVisionLLM(imagePath) {
-    if (process.env.VISION_LLM_ENABLED === 'false') return null;
-
-    const imageData = fs.readFileSync(imagePath).toString('base64');
-
-    // Try Gemini first (free)
-    if (process.env.GEMINI_API_KEY) {
-        try {
-            return await tryGemini(imageData);
-        } catch (err) {
-            console.warn('[Vision] Gemini failed:', err.message);
-        }
-    }
-
-    // Try Anthropic second (if key is real)
-    if (process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.includes('your-key')) {
-        try {
-            return await tryAnthropic(imageData);
-        } catch (err) {
-            console.warn('[Vision] Anthropic failed:', err.message);
-        }
-    }
-
-    // Try OpenAI last (paid)
-    if (process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes('your-key')) {
-        try {
-            return await tryOpenAI(imageData);
-        } catch (err) {
-            console.warn('[Vision] OpenAI failed:', err.message);
-        }
-    }
-
-    return null;
-}
 
 async function tryGemini(imageData) {
     console.log('[Vision] Attempting Gemini (gemini-1.5-flash)...');
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // FIX: was 'gemini-1.5-pro' — that model was removed from v1beta
-    // gemini-1.5-flash is free, fast, and supports vision
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // New SDK — uses v1 stable API, not v1beta
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-    const result = await model.generateContent([
-        SYSTEM_PROMPT,
-        { inlineData: { data: imageData, mimeType: 'image/png' } }
-    ]);
+    const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',   // works on v1 stable
+        contents: [
+            {
+                parts: [
+                    { text: SYSTEM_PROMPT },
+                    { inlineData: { data: imageData, mimeType: 'image/jpeg' } }
+                ]
+            }
+        ]
+    });
 
-    let text = result.response.text().trim();
-    // Strip markdown code fences if model wraps in ```json
+    let text = response.text.trim();
+    // Strip markdown fences if model wraps output in ```json
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
@@ -102,9 +72,9 @@ async function tryAnthropic(imageData) {
 }
 
 async function tryOpenAI(imageData) {
-    console.log('[Vision] Attempting OpenAI...');
+    console.log('[Vision] Attempting OpenAI (gpt-4o-mini)...');
     const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-        model: 'gpt-4o-mini', // cheaper than gpt-4o, same vision quality for ID cards
+        model: 'gpt-4o-mini', 
         max_tokens: 512,
         messages: [{
             role: 'user',
@@ -119,6 +89,38 @@ async function tryOpenAI(imageData) {
         timeout: 20000
     });
     return JSON.parse(response.data.choices[0].message.content);
+}
+
+async function extractWithVisionLLM(imagePath) {
+    if (process.env.VISION_LLM_ENABLED === 'false') return null;
+
+    const imageData = fs.readFileSync(imagePath).toString('base64');
+
+    if (process.env.GEMINI_API_KEY) {
+        try {
+            return await tryGemini(imageData);
+        } catch (err) {
+            console.warn('[Vision] Gemini failed:', err.message);
+        }
+    }
+
+    if (process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.includes('your-key')) {
+        try {
+            return await tryAnthropic(imageData);
+        } catch (err) {
+            console.warn('[Vision] Anthropic failed:', err.message);
+        }
+    }
+
+    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith('sk-')) {
+        try {
+            return await tryOpenAI(imageData);
+        } catch (err) {
+            console.warn('[Vision] OpenAI failed:', err.message);
+        }
+    }
+
+    return null;
 }
 
 module.exports = { extractWithVisionLLM };
