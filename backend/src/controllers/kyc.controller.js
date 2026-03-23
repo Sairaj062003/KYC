@@ -3,6 +3,9 @@ const ocrService = require('../services/ocr.service');
 const llmService = require('../services/llm.service');
 const embeddingService = require('../services/embedding.service');
 const similarityService = require('../services/similarity.service');
+const { preprocessImage } = require('../services/imagePreprocessor.service');
+const { extractWithVisionLLM } = require('../services/visionExtractor.service');
+const { validateAndMerge } = require('../services/fieldValidator.service');
 
 /**
  * POST /kyc/upload
@@ -42,44 +45,85 @@ async function upload(req, res, next) {
     );
     const phoneNumber = userResult.rows[0]?.phone_number || '';
 
-    // ── Async Processing Pipeline ──────────────────────────
-    // Uses setImmediate to not block the event loop
+    // ── Async Processing Pipeline (4-Layer OCR) ─────────────
     setImmediate(async () => {
       try {
-        // Step 1: OCR — Extract raw text from the document
-        console.log(`[Pipeline] KYC ${kycId}: Starting OCR...`);
-        const rawText = await ocrService.extractText(filePath);
+        // Layer 1: Image Pre-processing (OpenCV)
+        console.log(`[Pipeline] KYC ${kycId}: Layer 1 — Pre-processing image...`);
+        const cleanImagePath = await preprocessImage(filePath);
 
-        // Step 2: LLM — Extract structured data from raw text
-        console.log(`[Pipeline] KYC ${kycId}: Starting LLM extraction...`);
-        const extracted = await llmService.extractStructuredData(rawText);
+        // Layer 2: Vision LLM Extraction (GPT-4o / Claude Haiku)
+        console.log(`[Pipeline] KYC ${kycId}: Layer 2 — Vision LLM extraction...`);
+        let visionResult = null;
+        try {
+          visionResult = await extractWithVisionLLM(cleanImagePath);
+        } catch (err) {
+          console.warn(`[Pipeline] Vision LLM failed for ${kycId}:`, err.message);
+        }
 
-        // Step 3: Update database with extracted data
+        // Layer 3: Enhanced Tesseract + Ollama (Fallback / Supplement)
+        let ollamaResult = null;
+        let rawText = '';
+        
+        const isVisionComplete = visionResult?.name && 
+                                (visionResult?.pan_number || visionResult?.aadhaar_number) && 
+                                visionResult?.dob;
+
+        if (!isVisionComplete) {
+          console.log(`[Pipeline] KYC ${kycId}: Layer 3 — Vision incomplete, starting Tesseract fallback...`);
+          rawText = await ocrService.extractText(cleanImagePath);
+          ollamaResult = await llmService.extractStructuredData(rawText);
+        }
+
+        // Layer 4: Validation + Regex Correction
+        console.log(`[Pipeline] KYC ${kycId}: Layer 4 — Validating and merging results...`);
+        const finalFields = validateAndMerge(visionResult, ollamaResult);
+
+        // Determine status per FR-OCR-05
+        const extractionFailed = !finalFields.name && !finalFields.pan_number && !finalFields.aadhaar_number;
+        const status = extractionFailed ? 'extraction_failed' : 'extracted';
+
+        // Step 3: Update database with validated and merged data
         await pool.query(
           `UPDATE kyc_documents
            SET extracted_name = $1,
                pan_number = $2,
-               dob = $3,
-               document_type = $4,
-               ocr_raw_text = $5,
-               status = 'extracted',
+               aadhaar_number = $3,
+               dob = $4,
+               document_type = $5,
+               ocr_raw_text = $6,
+               status = $7,
                updated_at = NOW()
-           WHERE id = $6`,
+           WHERE id = $8`,
           [
-            extracted.full_name,
-            extracted.pan_number,
-            extracted.dob,
-            extracted.document_type,
-            rawText,
+            finalFields.name,
+            finalFields.pan_number,
+            finalFields.aadhaar_number,
+            finalFields.dob,
+            finalFields.document_type,
+            rawText || null,
+            status,
             kycId,
           ]
         );
 
-        // Step 4: Generate and store embeddings in Qdrant
-        console.log(`[Pipeline] KYC ${kycId}: Generating embeddings...`);
-        await embeddingService.generateAndStore(kycId, extracted, phoneNumber);
+        if (status === 'extraction_failed') {
+          console.log(`[Pipeline] KYC ${kycId}: Extraction failed.`);
+          return;
+        }
 
-        // Step 5: Check for duplicates via similarity search
+        // Step 4: Generate and store embeddings
+        console.log(`[Pipeline] KYC ${kycId}: Generating embeddings...`);
+        // Note: normalized results for embedding (keeping same object structure as before for compatibility)
+        const normalizedForEmbedding = {
+          full_name: finalFields.name,
+          pan_number: finalFields.pan_number,
+          dob: finalFields.dob,
+          document_type: finalFields.document_type
+        };
+        await embeddingService.generateAndStore(kycId, normalizedForEmbedding, phoneNumber);
+
+        // Step 5: Check for duplicates
         console.log(`[Pipeline] KYC ${kycId}: Checking duplicates...`);
         const similarity = await similarityService.checkDuplicates(kycId);
 

@@ -100,7 +100,9 @@ async function extractText(filePath) {
 
   // Run OCR with retry logic
   const text = await withRetry(async () => {
-    const result = await Tesseract.recognize(finalImagePath, 'eng', {
+    const result = await Tesseract.recognize(imagePath, 'eng+hin', {
+      tessedit_pageseg_mode: '6',
+      preserve_interword_spaces: '1',
       logger: () => {}, // Suppress progress logs in production
     });
     return result.data.text;
