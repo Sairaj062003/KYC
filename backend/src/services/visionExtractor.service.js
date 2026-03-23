@@ -95,7 +95,7 @@ async function tryAnthropic(imageData) {
 
 async function tryGemini(imageData) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
     const result = await model.generateContent([
         SYSTEM_PROMPT,
         { inlineData: { data: imageData, mimeType: "image/png" } }
