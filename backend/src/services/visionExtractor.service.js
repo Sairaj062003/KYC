@@ -1,7 +1,6 @@
 // backend/src/services/visionExtractor.service.js
 const fs = require('fs');
 const axios = require('axios');
-const { GoogleGenAI } = require('@google/genai');
 
 const SYSTEM_PROMPT = `You are an Indian identity document OCR specialist.
 Extract fields from the provided ID card image (Aadhaar/PAN/Passport).
@@ -20,28 +19,44 @@ Rules:
 - Use null for any field you cannot read clearly.`;
 
 async function tryGemini(imageData) {
-    console.log('[Vision] Attempting Gemini (gemini-1.5-flash)...');
+    console.log('[Vision] Attempting Gemini via REST API (v1 stable)...');
 
-    // New SDK — uses v1 stable API, not v1beta
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    // Model name verified by user to be available on their specific key
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',   // works on v1 stable
-        contents: [
-            {
-                parts: [
-                    { text: SYSTEM_PROMPT },
-                    { inlineData: { data: imageData, mimeType: 'image/jpeg' } }
-                ]
-            }
-        ]
+    const body = {
+        contents: [{
+            parts: [
+                { text: SYSTEM_PROMPT },
+                {
+                    inline_data: {
+                        mime_type: 'image/jpeg',
+                        data: imageData
+                    }
+                }
+            ]
+        }],
+        generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 512,
+        }
+    };
+
+    const response = await axios.post(url, body, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 30000
     });
 
-    let text = response.text.trim();
-    // Strip markdown fences if model wraps output in ```json
+    if (!response.data.candidates || !response.data.candidates[0].content) {
+        throw new Error('Invalid response from Gemini API');
+    }
+
+    let text = response.data.candidates[0].content.parts[0].text.trim();
+    // Strip markdown fences
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+
     console.log('[Vision] Gemini extracted:', parsed);
     return parsed;
 }
