@@ -99,14 +99,33 @@ async function extractText(filePath) {
   const finalImagePath = preprocessedPath;
 
   // Run OCR with retry logic
-  const text = await withRetry(async () => {
+  let text = await withRetry(async () => {
     const result = await Tesseract.recognize(finalImagePath, 'eng+hin', {
       tessedit_pageseg_mode: '3',
       preserve_interword_spaces: '1',
       logger: () => {}, 
     });
     return result.data.text;
-  }, 3, 1000);
+  }, 2, 1000);
+
+  // Fallback: If pre-processed text is too short, try the original image
+  // Sometimes Sharp/OpenCV over-processing ruins high-res images for Tesseract
+  if (!text || text.trim().length < 50) {
+    console.log(`[OCR] Pass 1 yielded poor results (${text?.length || 0} chars). Trying original image...`);
+    const fallbackText = await withRetry(async () => {
+      const result = await Tesseract.recognize(imagePath, 'eng+hin', {
+        tessedit_pageseg_mode: '3',
+        preserve_interword_spaces: '1',
+        logger: () => {},
+      });
+      return result.data.text;
+    }, 2, 1000);
+    
+    // Use the longer of the two results
+    if ((fallbackText?.length || 0) > (text?.length || 0)) {
+        text = fallbackText;
+    }
+  }
 
   // Clean up temporary preprocessed image
   if (fs.existsSync(preprocessedPath)) {

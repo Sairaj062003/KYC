@@ -39,20 +39,21 @@ def preprocess(input_path, output_path):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     enhanced = clahe.apply(rotated)
 
-    # 2. Denoise with Gaussian Blur
-    blurred = cv2.GaussianBlur(enhanced, (5,5), 0)
+    # 2. Edge-preserving Denoising (Bilateral Filter)
+    denoised = cv2.bilateralFilter(enhanced, 9, 75, 75)
 
-    # 3. Adaptive Thresholding (Better for uneven lighting/shadows)
+    # 3. Adaptive Thresholding
     thresh = cv2.adaptiveThreshold(
-        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY, 11, 2
     )
     
-    # 4. Final Dilation to make characters slightly thicker (helps Tesseract)
-    kernel = np.ones((1,1), np.uint8)
-    final = cv2.dilate(thresh, kernel, iterations=1)
-
-    cv2.imwrite(output_path, final)
+    # 4. Remove small noise dots (Morphological Opening)
+    kernel = np.ones((2,2), np.uint8)
+    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+    
+    # 5. Final result
+    cv2.imwrite(output_path, opening)
     print(f"Pre-processed image saved to {output_path}")
 
 if __name__ == '__main__':
