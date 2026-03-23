@@ -118,6 +118,7 @@ async function upload(req, res, next) {
         const normalizedForEmbedding = {
           full_name: finalFields.name,
           pan_number: finalFields.pan_number,
+          aadhaar_number: finalFields.aadhaar_number,
           dob: finalFields.dob,
           document_type: finalFields.document_type
         };
