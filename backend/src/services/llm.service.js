@@ -1,40 +1,17 @@
+// backend/src/services/llm.service.js
 const { generate } = require('../config/ollama');
 
-/**
- * Build the KYC extraction prompt for the Ollama LLM.
- * The prompt instructs the model to return ONLY valid JSON with specific fields.
- *
- * @param {string} rawText - OCR-extracted raw text from the document
- * @returns {string} Formatted prompt
- */
 function buildExtractionPrompt(rawText) {
-  return `You are a KYC document parser. Extract the following fields from the provided OCR text.
-Return ONLY a valid JSON object with these exact keys. If a field is not found, use null.
-Do not include any explanation or text outside the JSON object.
+  return `You are a KYC document parser for Indian identity documents.
+Extract the following fields from the OCR text below.
+Return ONLY a valid JSON object. No explanation, no markdown, just raw JSON.
 
-Fields to extract:
-- full_name: string (person's full name)
-- pan_number: string (10-char alphanumeric PAN, e.g. ABCDE1234F)
-- aadhaar_number: string (12-digit UID code)
-- dob: string (date of birth in YYYY-MM-DD format)
-- document_type: string (one of: "aadhaar", "pan", "passport", "other")
-
-OCR Text:
-"""
-${rawText}
-"""
-
-Return only JSON:`;
-}
-
-/**
- * Build a stricter retry prompt when the first attempt fails to produce valid JSON.
- */
-function buildStrictPrompt(rawText) {
-  return `You MUST return ONLY a valid JSON object. No markdown, no explanation, no extra text.
-The JSON must have exactly these keys: full_name, pan_number, aadhaar_number, dob, document_type.
-Use null for any field not found. Example format:
-{"full_name": "John Doe", "pan_number": "ABCDE1234F", "aadhaar_number": "123456789012", "dob": "1990-01-15", "document_type": "pan"}
+Required JSON keys (use null if not found):
+- name: string (person's full name — look for "Name:" label or prominent text)
+- pan_number: string (10-char: 5 letters + 4 digits + 1 letter, e.g. ABCDE1234F)
+- aadhaar_number: string (12 digits, strip any spaces)
+- dob: string (date of birth in YYYY-MM-DD format — look for "DOB:", "Date of Birth:", "जन्म तिथि")
+- document_type: "aadhaar" | "pan" | "passport" | null
 
 OCR Text:
 """
@@ -44,88 +21,80 @@ ${rawText}
 JSON:`;
 }
 
-/**
- * Attempt to parse JSON from the LLM response string.
- * Handles cases where the model wraps JSON in markdown code blocks.
- *
- * @param {string} responseText - Raw LLM response
- * @returns {Object} Parsed JSON object
- */
+function buildStrictPrompt(rawText) {
+  return `Return ONLY this JSON structure, nothing else:
+{"name":null,"pan_number":null,"aadhaar_number":null,"dob":null,"document_type":null}
+
+Replace null with actual values found in this text:
+"""
+${rawText}
+"""
+
+JSON:`;
+}
+
 function parseJsonResponse(responseText) {
   let cleaned = responseText.trim();
-
-  // Strip markdown code block wrappers if present
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-  }
-
-  // Try to extract JSON object if there's surrounding text
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    cleaned = jsonMatch[0];
-  }
-
+  if (jsonMatch) cleaned = jsonMatch[0];
   return JSON.parse(cleaned);
 }
 
-/**
- * Extract structured data from OCR text using Ollama LLM.
- * Sends a structured extraction prompt and parses the JSON response.
- * If the first attempt fails to produce valid JSON, retries once with a stricter prompt.
- *
- * @param {string} rawText - OCR-extracted raw text
- * @returns {{ full_name: string|null, pan_number: string|null, dob: string|null, document_type: string|null }}
- */
 async function extractStructuredData(rawText) {
-  // First attempt with standard prompt
   try {
     const response = await generate(buildExtractionPrompt(rawText), undefined, 120000);
     const parsed = parseJsonResponse(response);
     return normalizeResult(parsed);
   } catch (firstErr) {
-    console.warn('[LLM] First extraction attempt failed:', firstErr.message);
+    console.warn('[LLM] First attempt failed:', firstErr.message);
   }
 
-  // Retry with stricter prompt
   try {
     const response = await generate(buildStrictPrompt(rawText), undefined, 120000);
     const parsed = parseJsonResponse(response);
     return normalizeResult(parsed);
   } catch (retryErr) {
-    console.error('[LLM] Retry extraction also failed:', retryErr.message);
-    // Return nulls rather than crashing — the document status will be set to extraction_failed
-    return {
-      full_name: null,
-      pan_number: null,
-      dob: null,
-      document_type: null,
-    };
+    console.error('[LLM] Retry also failed:', retryErr.message);
+    return { name: null, pan_number: null, aadhaar_number: null, dob: null, document_type: null };
   }
 }
 
-/**
- * Normalize the parsed result to ensure all expected fields exist.
- * @param {Object} parsed - Parsed JSON from LLM
- * @returns {Object} Normalized result with all fields
- */
-/**
- * Normalize and sanitize the parsed result to ensure DB safety.
- * @param {Object} parsed - Parsed JSON from LLM
- * @returns {Object} Normalized result
- */
 function normalizeResult(parsed) {
+  // FIX: Ollama was returning 'full_name' but the DB column and visionExtractor
+  // both use 'name'. Accept both and normalise to 'name'.
+  const rawName = parsed.name || parsed.full_name || null;
+
   let dob = parsed.dob || null;
-  // Basic date validation (YYYY-MM-DD or similar)
-  if (dob && isNaN(Date.parse(dob))) {
-    console.warn(`[LLM] Invalid DOB format extracted: ${dob}`);
-    dob = null;
+  if (dob) {
+    // Normalise common Indian date formats to YYYY-MM-DD
+    // Handles: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+    const dmyMatch = dob.match(/^(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})$/);
+    if (dmyMatch) {
+      dob = `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+    }
+    if (isNaN(Date.parse(dob))) {
+      console.warn(`[LLM] Invalid DOB after normalisation: ${dob}`);
+      dob = null;
+    }
   }
 
+  // Strip aadhaar spaces: "1234 5678 9012" → "123456789012"
+  const rawAadhaar = parsed.aadhaar_number
+    ? String(parsed.aadhaar_number).replace(/\s/g, '').substring(0, 20)
+    : null;
+
+  // Validate PAN format
+  const rawPan = parsed.pan_number
+    ? String(parsed.pan_number).replace(/[^A-Z0-9]/gi, '').toUpperCase().substring(0, 10)
+    : null;
+  const panValid = rawPan && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(rawPan);
+
   return {
-    full_name: parsed.full_name ? String(parsed.full_name).substring(0, 255) : null,
-    pan_number: parsed.pan_number ? String(parsed.pan_number).replace(/[^A-Z0-9]/gi, '').toUpperCase().substring(0, 20) : null,
-    aadhaar_number: parsed.aadhaar_number ? String(parsed.aadhaar_number).replace(/\s/g, '').substring(0, 20) : null,
-    dob: dob,
+    name: rawName ? String(rawName).substring(0, 255) : null,
+    pan_number: panValid ? rawPan : null,
+    aadhaar_number: rawAadhaar,
+    dob,
     document_type: parsed.document_type ? String(parsed.document_type).substring(0, 50) : null,
   };
 }
