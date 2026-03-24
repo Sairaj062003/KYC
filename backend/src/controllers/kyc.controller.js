@@ -131,7 +131,7 @@ async function upload(req, res, next) {
         console.log(
           `[Pipeline] KYC ${kycId}: Processing complete. ` +
           `Score: ${similarity.similarity_score.toFixed(4)}, ` +
-          `Duplicate: ${similarity.is_duplicate}`
+          `Category: ${similarity.similarity_category}`
         );
       } catch (pipelineErr) {
         // On any pipeline error — mark document as extraction_failed
@@ -169,7 +169,7 @@ async function getStatus(req, res, next) {
 
     const result = await pool.query(
       `SELECT id, status, document_type, extracted_name, pan_number, dob,
-              similarity_score, is_duplicate, uploaded_at, updated_at
+              similarity_score, similarity_category, is_duplicate, uploaded_at, updated_at
        FROM kyc_documents
        WHERE id = $1 AND user_id = $2`,
       [id, userId]
@@ -195,7 +195,7 @@ async function getMyDocuments(req, res, next) {
 
     const result = await pool.query(
       `SELECT id, original_name, document_type, extracted_name, status,
-              similarity_score, is_duplicate, uploaded_at, updated_at
+              similarity_score, similarity_category, is_duplicate, uploaded_at, updated_at
        FROM kyc_documents
        WHERE user_id = $1
        ORDER BY uploaded_at DESC`,

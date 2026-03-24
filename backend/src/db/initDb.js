@@ -27,9 +27,19 @@ async function initDb() {
 
       // Execute the SQL script
       await pool.query(sql);
-      console.log('[Database] Schema initialized successfully.');
+      // Run subsequent migrations
+      // (This will normally throw if not handled, let's just make it run safely)
+      console.log('[Database] Full Schema initialized successfully.');
     } else {
-      console.log('[Database] Schema already exists. Skipping initialization.');
+      console.log('[Database] Schema already exists. Running new migrations...');
+    }
+
+    // Always try to run 003_similarity_category to alter the table
+    const sqlPath3 = path.join(__dirname, 'migrations', '003_similarity_category.sql');
+    if (fs.existsSync(sqlPath3)) {
+      const sql3 = fs.readFileSync(sqlPath3, 'utf8');
+      await pool.query(sql3);
+      console.log('[Database] Migration 003_similarity_category applied.');
     }
   } catch (err) {
     console.error('[Database] Initialization failed:', err.message);
