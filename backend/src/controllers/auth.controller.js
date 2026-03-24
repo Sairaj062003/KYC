@@ -71,12 +71,17 @@ async function register(req, res, next) {
     // Hash password with bcrypt (10 salt rounds)
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert new user with role = 'user'
+    // Check if this is the first user
+    const countResult = await pool.query('SELECT COUNT(*) FROM users');
+    const isFirstUser = parseInt(countResult.rows[0].count, 10) === 0;
+    const role = isFirstUser ? 'admin' : 'user';
+
+    // Insert new user with appropriate role
     const result = await pool.query(
       `INSERT INTO users (name, email, password, phone_number, role)
-       VALUES ($1, $2, $3, $4, 'user')
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [name, email, hashedPassword, phone_number]
+      [name, email, hashedPassword, phone_number, role]
     );
 
     res.status(201).json({
@@ -140,9 +145,44 @@ async function login(req, res, next) {
   }
 }
 
+/**
+ * POST /auth/make-admin
+ * Protected by secret key to promote a user to admin
+ */
+async function makeAdmin(req, res, next) {
+  try {
+    const { email, secretKey } = req.body;
+    
+    if (!secretKey || secretKey !== process.env.ADMIN_SETUP_SECRET) {
+      return res.status(403).json({ error: 'Invalid or missing secret key' });
+    }
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    const result = await pool.query(
+      'UPDATE users SET role = $1 WHERE email = $2 RETURNING id, email, role',
+      ['admin', email]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.status(200).json({
+      message: 'User promoted to admin successfully',
+      user: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   register,
   login,
+  makeAdmin,
   registerValidation,
   loginValidation,
 };

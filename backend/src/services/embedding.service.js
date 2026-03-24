@@ -32,7 +32,7 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
 
   // Generate embeddings in parallel for efficiency
   const [docEmbedding, phoneEmbedding] = await Promise.all([
-    docText ? embed(docText) : embed('unknown document'),
+    docText ? embed(docText) : null,
     phoneText ? embed(phoneText) : null,
   ]);
 
@@ -40,20 +40,22 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
   const points = [];
 
   // Point 1: Document embedding (using deterministic UUID)
-  const docPointId = uuidv5(`${kycId}_doc`, KYC_NAMESPACE);
-  points.push({
-    id: docPointId,
-    vector: docEmbedding,
-    payload: {
-      kycId,
-      type: 'document',
-      name: extractedData.full_name,
-      pan_number: extractedData.pan_number,
-      aadhaar_number: extractedData.aadhaar_number,
-      dob: extractedData.dob,
-      document_type: extractedData.document_type,
-    },
-  });
+  if (docEmbedding) {
+    const docPointId = uuidv5(`${kycId}_doc`, KYC_NAMESPACE);
+    points.push({
+      id: docPointId,
+      vector: docEmbedding,
+      payload: {
+        kycId,
+        type: 'document',
+        name: extractedData.full_name,
+        pan_number: extractedData.pan_number,
+        aadhaar_number: extractedData.aadhaar_number,
+        dob: extractedData.dob,
+        document_type: extractedData.document_type,
+      },
+    });
+  }
 
   // Point 2: Phone embedding (using deterministic UUID)
   if (phoneEmbedding) {

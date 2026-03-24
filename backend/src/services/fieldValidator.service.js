@@ -24,19 +24,19 @@ function validateAndMerge(visionResult, ollamaResult) {
     // 1. Name: Prefer longer non-null value
     const names = sources
         .map(s => s?.name)
-        .filter(n => typeof n === 'string' && n.length > 2)
+        .filter(n => typeof n === 'string' && n.length > 2 && !['null', 'applicant name', 'he ln'].includes(n.toLowerCase()))
         .sort((a, b) => b.length - a.length);
     merged.name = names[0] || null;
 
     // 2. PAN Number: Pick first that passes regex
     merged.pan_number = sources
         .map(s => s?.pan_number?.toUpperCase()?.replace(/\s/g, ''))
-        .filter(v => typeof v === 'string' && PAN_REGEX.test(v))[0] || null;
+        .filter(v => typeof v === 'string' && PAN_REGEX.test(v) && !['ABCDE1234F', 'ABCD1234F'].includes(v))[0] || null;
 
     // 3. Aadhaar Number: Strip spaces, pick first that is 12 digits
     merged.aadhaar_number = sources
         .map(s => s?.aadhaar_number?.replace(/\s/g, ''))
-        .filter(v => typeof v === 'string' && AADHAAR_REGEX.test(v))[0] || null;
+        .filter(v => typeof v === 'string' && AADHAAR_REGEX.test(v) && !['123456789012', '012345678901'].includes(v))[0] || null;
 
     // 4. DOB: Prefer YYYY-MM-DD format
     merged.dob = sources
