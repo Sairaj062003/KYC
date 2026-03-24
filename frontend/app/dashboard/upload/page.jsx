@@ -10,6 +10,7 @@ import KycStatusBadge from '../../../components/KycStatusBadge';
 export default function UploadPage() {
   const router = useRouter();
   const [selectedFile, setSelectedFile] = useState(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [kycData, setKycData] = useState(null);
@@ -20,6 +21,10 @@ export default function UploadPage() {
       setError('Please select a file to upload');
       return;
     }
+    if (!phoneNumber || !/^[6-9]\d{9}$/.test(phoneNumber)) {
+      setError('Please enter a valid 10-digit Indian mobile number');
+      return;
+    }
 
     setError('');
     setUploading(true);
@@ -27,6 +32,7 @@ export default function UploadPage() {
     try {
       const formData = new FormData();
       formData.append('document', selectedFile);
+      formData.append('phone_number', phoneNumber);
 
       const res = await api.post('/kyc/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -89,6 +95,20 @@ export default function UploadPage() {
                 onFileSelect={setSelectedFile}
                 disabled={uploading || processing}
               />
+
+              <div className="space-y-2">
+                <label className="text-white text-sm font-medium">Linked Phone Number</label>
+                <input
+                  type="tel"
+                  placeholder="Enter 10-digit phone number"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  disabled={uploading || processing}
+                  maxLength={10}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                  id="phone-number-input"
+                />
+              </div>
 
               {error && (
                 <div className="p-4 rounded-xl bg-danger-500/10 border border-danger-500/20 text-danger-400 text-sm">

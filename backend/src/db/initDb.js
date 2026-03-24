@@ -41,6 +41,14 @@ async function initDb() {
       await pool.query(sql3);
       console.log('[Database] Migration 003_similarity_category applied.');
     }
+
+    // Always try to run 004_revoke_admin
+    const sqlPath4 = path.join(__dirname, 'migrations', '004_revoke_admin.sql');
+    if (fs.existsSync(sqlPath4)) {
+      const sql4 = fs.readFileSync(sqlPath4, 'utf8');
+      await pool.query(sql4);
+      console.log('[Database] Migration 004_revoke_admin applied.');
+    }
   } catch (err) {
     console.error('[Database] Initialization failed:', err.message);
     // We don't exit here to allow the app to try connecting later, 

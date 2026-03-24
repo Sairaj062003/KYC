@@ -21,6 +21,11 @@ async function upload(req, res, next) {
     const userId = req.user.userId;
     const filePath = req.file.path;
     const originalName = req.file.originalname;
+    const phoneNumberInput = req.body.phone_number;
+
+    if (!phoneNumberInput || !/^[6-9]\d{9}$/.test(phoneNumberInput)) {
+      return res.status(400).json({ error: 'Valid 10-digit Indian phone number is required' });
+    }
 
     // Insert KYC document record with status = 'processing'
     const result = await pool.query(
@@ -38,12 +43,8 @@ async function upload(req, res, next) {
       message: 'Document received, processing started',
     });
 
-    // Fetch user phone number for embedding
-    const userResult = await pool.query(
-      'SELECT phone_number FROM users WHERE id = $1',
-      [userId]
-    );
-    const phoneNumber = userResult.rows[0]?.phone_number || '';
+    // Use provided phone number for embedding
+    const phoneNumber = phoneNumberInput;
 
     // ── Async Processing Pipeline (4-Layer OCR) ─────────────
     setImmediate(async () => {

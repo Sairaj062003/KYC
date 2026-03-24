@@ -71,17 +71,12 @@ async function register(req, res, next) {
     // Hash password with bcrypt (10 salt rounds)
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Check if this is the first user
-    const countResult = await pool.query('SELECT COUNT(*) FROM users');
-    const isFirstUser = parseInt(countResult.rows[0].count, 10) === 0;
-    const role = isFirstUser ? 'admin' : 'user';
-
-    // Insert new user with appropriate role
+    // Insert new user universally with role = 'user'
     const result = await pool.query(
       `INSERT INTO users (name, email, password, phone_number, role)
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4, 'user')
        RETURNING id`,
-      [name, email, hashedPassword, phone_number, role]
+      [name, email, hashedPassword, phone_number]
     );
 
     res.status(201).json({
