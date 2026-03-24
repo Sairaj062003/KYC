@@ -47,7 +47,7 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
     payload: {
       kycId,
       type: 'document',
-      full_name: extractedData.full_name,
+      name: extractedData.full_name,
       pan_number: extractedData.pan_number,
       aadhaar_number: extractedData.aadhaar_number,
       dob: extractedData.dob,
