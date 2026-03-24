@@ -1,7 +1,7 @@
 // backend/src/services/similarity.service.js
 const { v5: uuidv5 } = require('uuid');
 const pool = require('../config/db');
-const { getPoints, searchSimilarWithFilter } = require('../config/vectorDb');
+const { getPoints, searchSimilar } = require('../config/vectorDb');
 
 const KYC_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD) || 0.85;
@@ -45,7 +45,7 @@ async function checkDuplicates(kycId) {
         ]
       };
 
-      const results = await searchSimilarWithFilter(point.vector, 5, filter);
+      const results = await searchSimilar(point.vector, 5, filter);
 
       console.log(`[Similarity] ${pointType} search for KYC ${kycId}: ${results.length} results`);
       results.forEach(r => {
