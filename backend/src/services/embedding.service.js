@@ -18,6 +18,8 @@ async function generateAndStore(kycId, extractedData, phoneNumber) {
     extractedData.full_name,
     extractedData.pan_number,
     extractedData.aadhaar_number,
+    extractedData.dob,
+    phoneNumber,
     extractedData.document_type,
   ].filter(Boolean).join(' ') || 'unknown document';
 

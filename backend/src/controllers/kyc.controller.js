@@ -169,10 +169,11 @@ async function getStatus(req, res, next) {
     const userId = req.user.userId;
 
     const result = await pool.query(
-      `SELECT id, status, document_type, extracted_name, pan_number, aadhaar_number, dob,
-              similarity_score, similarity_category, is_duplicate, uploaded_at, updated_at
-       FROM kyc_documents
-       WHERE id = $1 AND user_id = $2`,
+      `SELECT kd.id, kd.status, kd.document_type, kd.extracted_name, kd.pan_number, kd.aadhaar_number, kd.dob,
+              kd.similarity_score, kd.similarity_category, kd.is_duplicate, kd.uploaded_at, kd.updated_at,
+              (SELECT reason FROM kyc_reviews WHERE kyc_id = kd.id ORDER BY created_at DESC LIMIT 1) as admin_reason
+       FROM kyc_documents kd
+       WHERE kd.id = $1 AND kd.user_id = $2`,
       [id, userId]
     );
 
@@ -195,11 +196,12 @@ async function getMyDocuments(req, res, next) {
     const userId = req.user.userId;
 
     const result = await pool.query(
-      `SELECT id, original_name, document_type, extracted_name, pan_number, aadhaar_number, status,
-              similarity_score, similarity_category, is_duplicate, uploaded_at, updated_at
-       FROM kyc_documents
-       WHERE user_id = $1
-       ORDER BY uploaded_at DESC`,
+      `SELECT kd.id, kd.original_name, kd.document_type, kd.extracted_name, kd.pan_number, kd.aadhaar_number, kd.status,
+              kd.similarity_score, kd.similarity_category, kd.is_duplicate, kd.uploaded_at, kd.updated_at,
+              (SELECT reason FROM kyc_reviews WHERE kyc_id = kd.id ORDER BY created_at DESC LIMIT 1) as admin_reason
+       FROM kyc_documents kd
+       WHERE kd.user_id = $1
+       ORDER BY kd.uploaded_at DESC`,
       [userId]
     );
 

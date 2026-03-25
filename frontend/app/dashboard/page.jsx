@@ -142,9 +142,16 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 {doc.extracted_name && (
-                  <div className="mt-3 pt-3 border-t border-white/5 flex gap-6 text-sm">
+                  <div className="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-x-6 gap-y-2 text-sm">
                     <span className="text-gray-400">Name: <span className="text-white">{doc.extracted_name}</span></span>
                     {doc.pan_number && <span className="text-gray-400">PAN: <span className="text-white">{doc.pan_number}</span></span>}
+                    {doc.aadhaar_number && <span className="text-gray-400">Aadhaar: <span className="text-white">{`XXXX XXXX ${doc.aadhaar_number.slice(-4)}`}</span></span>}
+                  </div>
+                )}
+                {doc.admin_reason && (doc.status === 'rejected' || doc.status === 'reupload_requested') && (
+                  <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">Feedback from Admin</p>
+                    <p className="text-sm text-gray-300 italic">"{doc.admin_reason}"</p>
                   </div>
                 )}
               </div>

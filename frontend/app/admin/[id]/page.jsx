@@ -20,6 +20,8 @@ export default function AdminKycDetailPage() {
   const [reason, setReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [showOcrText, setShowOcrText] = useState(false);
+  const [imageUrl, setImageUrl] = useState(null);
+  const [imageLoading, setImageLoading] = useState(false);
 
   useEffect(() => {
     // Check auth using adminAuth
@@ -32,13 +34,40 @@ export default function AdminKycDetailPage() {
   const fetchKycDetail = async () => {
     try {
       const res = await adminApi.get(`/admin/kyc/${kycId}`);
-      setKycData(res.data.data);
+      const data = res.data.data;
+      setKycData(data);
+      if (data.file_path) {
+        loadSecureImage(data.file_path);
+      }
     } catch (err) {
       console.error('Failed to fetch KYC detail:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const loadSecureImage = async (filePath) => {
+    const filename = filePath.split('/').pop().split('\\').pop();
+    const imageUrl = `/files/${filename}`;
+    setImageLoading(true);
+    try {
+      const response = await adminApi.get(imageUrl, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: response.headers['content-type'] });
+      const url = URL.createObjectURL(blob);
+      setImageUrl(url);
+    } catch (err) {
+      console.error('Failed to load secure image:', err);
+    } finally {
+      setImageLoading(false);
+    }
+  };
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (imageUrl) URL.revokeObjectURL(imageUrl);
+    };
+  }, [imageUrl]);
 
   const handleAction = async () => {
     if (!actionModal) return;
@@ -137,8 +166,7 @@ export default function AdminKycDetailPage() {
           const filename = kycData.file_path.split('/').pop().split('\\').pop();
           const ext = filename.split('.').pop().toLowerCase();
           const isPdf = ext === 'pdf';
-          const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
-          const imageUrl = `${apiBase}/files/${filename}`;
+          
           return (
             <div className="glass-card p-6">
               <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
@@ -150,29 +178,41 @@ export default function AdminKycDetailPage() {
               {isPdf ? (
                 <div className="p-4 rounded-xl bg-white/5 text-center">
                   <p className="text-gray-400 text-sm mb-3">PDF Document: {kycData.original_name || filename}</p>
-                  <a
-                    href={imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={async () => {
+                      const filename = kycData.file_path.split('/').pop().split('\\').pop();
+                      const response = await adminApi.get(`/files/${filename}`, { responseType: 'blob' });
+                      const blob = new Blob([response.data], { type: 'application/pdf' });
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                      setTimeout(() => URL.revokeObjectURL(url), 10000);
+                    }}
                     className="btn-primary inline-flex items-center gap-2 text-sm"
                   >
                     Open PDF
-                  </a>
+                  </button>
                 </div>
               ) : (
-                <div className="rounded-xl overflow-hidden bg-white/5 p-2">
-                  <img
-                    src={imageUrl}
-                    alt={kycData.original_name || 'KYC Document'}
-                    className="w-full max-h-[500px] object-contain rounded-lg"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                      e.target.nextSibling.style.display = 'block';
-                    }}
-                  />
-                  <p className="text-gray-500 text-sm text-center py-4" style={{ display: 'none' }}>
-                    Unable to load image preview
-                  </p>
+                <div className="rounded-xl overflow-hidden bg-white/5 p-2 min-h-[200px] flex items-center justify-center">
+                  {imageLoading ? (
+                    <div className="text-gray-400 flex items-center gap-2">
+                       <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                       </svg>
+                       Loading image securely...
+                    </div>
+                  ) : imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={kycData.original_name || 'KYC Document'}
+                      className="w-full max-h-[600px] object-contain rounded-lg"
+                    />
+                  ) : (
+                    <p className="text-gray-500 text-sm py-4">
+                      Unable to load image preview. Check your connection or permissions.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
