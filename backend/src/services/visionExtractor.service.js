@@ -18,8 +18,13 @@ Rules:
 - DOB: convert any format to YYYY-MM-DD
 - Use null for any field you cannot read clearly.`;
 
-async function tryGemini(imageData) {
+async function tryGemini(imageData, imagePath) {
     console.log('[Vision] Attempting Gemini via REST API (v1 stable)...');
+
+    // Detect MIME type from file extension
+    const ext = imagePath.split('.').pop().toLowerCase();
+    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', pdf: 'application/pdf' };
+    const mimeType = mimeMap[ext] || 'image/jpeg';
 
     // Model name verified by user to be available on their specific key
     const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
@@ -30,7 +35,7 @@ async function tryGemini(imageData) {
                 { text: SYSTEM_PROMPT },
                 {
                     inline_data: {
-                        mime_type: 'image/jpeg',
+                        mime_type: mimeType,
                         data: imageData
                     }
                 }
@@ -42,23 +47,36 @@ async function tryGemini(imageData) {
         }
     };
 
-    const response = await axios.post(url, body, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 30000
-    });
+    // Retry logic with exponential backoff for rate limits
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const response = await axios.post(url, body, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 30000
+            });
 
-    if (!response.data.candidates || !response.data.candidates[0].content) {
-        throw new Error('Invalid response from Gemini API');
+            if (!response.data.candidates || !response.data.candidates[0].content) {
+                throw new Error('Invalid response from Gemini API');
+            }
+
+            let text = response.data.candidates[0].content.parts[0].text.trim();
+            // Strip markdown fences
+            text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+
+            console.log('[Vision] Gemini extracted:', parsed);
+            return parsed;
+        } catch (err) {
+            if (err.response?.status === 429 && attempt < 3) {
+                const delay = attempt * 2000;
+                console.warn(`[Vision] Gemini rate limited, retrying in ${delay}ms (attempt ${attempt}/3)...`);
+                await new Promise(r => setTimeout(r, delay));
+                continue;
+            }
+            throw err;
+        }
     }
-
-    let text = response.data.candidates[0].content.parts[0].text.trim();
-    // Strip markdown fences
-    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-
-    console.log('[Vision] Gemini extracted:', parsed);
-    return parsed;
 }
 
 async function tryAnthropic(imageData) {
@@ -113,7 +131,7 @@ async function extractWithVisionLLM(imagePath) {
 
     if (process.env.GEMINI_API_KEY) {
         try {
-            return await tryGemini(imageData);
+            return await tryGemini(imageData, imagePath);
         } catch (err) {
             console.warn('[Vision] Gemini failed:', err.message);
         }

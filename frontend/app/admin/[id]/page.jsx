@@ -132,6 +132,53 @@ export default function AdminKycDetailPage() {
           </div>
         </div>
 
+        {/* Document Image Preview */}
+        {kycData.file_path && (() => {
+          const filename = kycData.file_path.split('/').pop().split('\\').pop();
+          const ext = filename.split('.').pop().toLowerCase();
+          const isPdf = ext === 'pdf';
+          const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
+          const imageUrl = `${apiBase}/files/${filename}`;
+          return (
+            <div className="glass-card p-6">
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Uploaded Document
+              </h3>
+              {isPdf ? (
+                <div className="p-4 rounded-xl bg-white/5 text-center">
+                  <p className="text-gray-400 text-sm mb-3">PDF Document: {kycData.original_name || filename}</p>
+                  <a
+                    href={imageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary inline-flex items-center gap-2 text-sm"
+                  >
+                    Open PDF
+                  </a>
+                </div>
+              ) : (
+                <div className="rounded-xl overflow-hidden bg-white/5 p-2">
+                  <img
+                    src={imageUrl}
+                    alt={kycData.original_name || 'KYC Document'}
+                    className="w-full max-h-[500px] object-contain rounded-lg"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'block';
+                    }}
+                  />
+                  <p className="text-gray-500 text-sm text-center py-4" style={{ display: 'none' }}>
+                    Unable to load image preview
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Extracted Data */}
         <div className="glass-card p-6">
           <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
@@ -152,6 +199,10 @@ export default function AdminKycDetailPage() {
             <div className="p-4 rounded-xl bg-white/5">
               <p className="text-gray-400 text-xs mb-1">Date of Birth</p>
               <p className="text-white font-medium">{kycData.dob || '—'}</p>
+            </div>
+            <div className="p-4 rounded-xl bg-white/5">
+              <p className="text-gray-400 text-xs mb-1">Aadhaar Number</p>
+              <p className="text-white font-medium font-mono">{kycData.aadhaar_number ? `XXXX XXXX ${kycData.aadhaar_number.slice(-4)}` : '—'}</p>
             </div>
             <div className="p-4 rounded-xl bg-white/5">
               <p className="text-gray-400 text-xs mb-1">Document Type</p>

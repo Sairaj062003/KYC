@@ -23,7 +23,8 @@ async function listKyc(req, res, next) {
       params.push(statusFilter);
     }
     if (riskFilter) {
-      whereClause += (whereClause ? ' AND' : 'WHERE') + ` kd.similarity_category = ${params.length + 1}`;
+      const paramIndex = params.length + 1;
+      whereClause += (whereClause ? ' AND' : 'WHERE') + ` kd.similarity_category = $${paramIndex}`;
       params.push(riskFilter);
     }
 
@@ -39,14 +40,14 @@ async function listKyc(req, res, next) {
     // Get paginated data with user email
     const dataQuery = `
       SELECT kd.id, kd.user_id, u.email AS user_email, kd.original_name,
-             kd.document_type, kd.extracted_name, kd.pan_number, kd.dob,
+             kd.document_type, kd.extracted_name, kd.pan_number, kd.aadhaar_number, kd.dob,
              kd.status, kd.similarity_score, kd.similarity_category, kd.is_duplicate,
              kd.uploaded_at, kd.updated_at
       FROM kyc_documents kd
       JOIN users u ON kd.user_id = u.id
       ${whereClause}
       ORDER BY kd.uploaded_at DESC
-      LIMIT ${params.length + 1} OFFSET ${params.length + 2}
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
     params.push(limit, offset);
 
@@ -73,7 +74,7 @@ async function getKycDetail(req, res, next) {
 
     // Fetch KYC document with user info
     const kycResult = await pool.query(
-      `SELECT kd.*, u.name AS user_name, u.email AS user_email,
+      `SELECT kd.*, kd.file_path, u.name AS user_name, u.email AS user_email,
               u.phone_number AS user_phone
        FROM kyc_documents kd
        JOIN users u ON kd.user_id = u.id

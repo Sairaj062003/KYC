@@ -169,7 +169,7 @@ async function getStatus(req, res, next) {
     const userId = req.user.userId;
 
     const result = await pool.query(
-      `SELECT id, status, document_type, extracted_name, pan_number, dob,
+      `SELECT id, status, document_type, extracted_name, pan_number, aadhaar_number, dob,
               similarity_score, similarity_category, is_duplicate, uploaded_at, updated_at
        FROM kyc_documents
        WHERE id = $1 AND user_id = $2`,
@@ -195,7 +195,7 @@ async function getMyDocuments(req, res, next) {
     const userId = req.user.userId;
 
     const result = await pool.query(
-      `SELECT id, original_name, document_type, extracted_name, status,
+      `SELECT id, original_name, document_type, extracted_name, pan_number, aadhaar_number, status,
               similarity_score, similarity_category, is_duplicate, uploaded_at, updated_at
        FROM kyc_documents
        WHERE user_id = $1

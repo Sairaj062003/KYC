@@ -19,8 +19,16 @@ async function preprocessImage(inputPath) {
 
         console.log(`Pre-processing image: ${absoluteInputPath} -> ${outputPath}`);
         
+        // Try 'python' first (Windows), fall back to 'python3' (Linux/Docker)
+        let pythonCmd = 'python';
+        try {
+            await execAsync('python --version');
+        } catch {
+            pythonCmd = 'python3';
+        }
+
         // Execute the Python script
-        const { stdout, stderr } = await execAsync(`python3 "${scriptPath}" "${absoluteInputPath}" "${outputPath}"`);
+        const { stdout, stderr } = await execAsync(`${pythonCmd} "${scriptPath}" "${absoluteInputPath}" "${outputPath}"`);
         
         if (stderr) {
             console.warn(`Pre-processing warning: ${stderr}`);

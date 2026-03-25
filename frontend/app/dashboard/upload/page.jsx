@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '../../../lib/api';
+import { userApi } from '../../../lib/api';
+import { userAuth } from '../../../lib/auth';
 import FileUploader from '../../../components/FileUploader';
 import KycStatusBadge from '../../../components/KycStatusBadge';
 
@@ -16,6 +17,12 @@ export default function UploadPage() {
   const [kycData, setKycData] = useState(null);
   const [error, setError] = useState('');
 
+  // Auth guard — redirect if not logged in
+  useEffect(() => {
+    if (!userAuth.isLoggedIn()) {
+      router.push('/login');
+    }
+  }, []);
   const handleSubmit = async () => {
     if (!selectedFile) {
       setError('Please select a file to upload');
@@ -34,7 +41,7 @@ export default function UploadPage() {
       formData.append('document', selectedFile);
       formData.append('phone_number', phoneNumber);
 
-      const res = await api.post('/kyc/upload', formData, {
+      const res = await userApi.post('/kyc/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
@@ -45,7 +52,7 @@ export default function UploadPage() {
       // Poll for processing status every 3 seconds
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await api.get(`/kyc/status/${kycId}`);
+          const statusRes = await userApi.get(`/kyc/status/${kycId}`);
           const data = statusRes.data.data;
           setKycData(data);
 
