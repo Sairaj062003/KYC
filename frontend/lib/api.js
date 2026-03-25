@@ -1,11 +1,11 @@
 import axios from 'axios';
+import { userAuth, adminAuth } from './auth';
 
 /**
- * Axios instance configured for the KYC API.
- * Automatically attaches JWT token from localStorage to every request.
- * On 401 responses, clears token and redirects to login page.
+ * User API instance — used in /dashboard/* pages
+ * Automatically attaches user token (kyc_user_token) from localStorage.
  */
-const api = axios.create({
+export const userApi = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
   timeout: 30000,
   headers: {
@@ -13,11 +13,11 @@ const api = axios.create({
   },
 });
 
-// Request interceptor — attach JWT token
-api.interceptors.request.use(
+// Request interceptor — attach user JWT token
+userApi.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
+      const token = userAuth.getToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -27,17 +27,55 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor — handle 401 (expired/invalid token)
-api.interceptors.response.use(
+// Response interceptor — handle 401 for user API
+userApi.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      userAuth.clear();
       window.location.href = '/login';
     }
     return Promise.reject(error);
   }
 );
 
-export default api;
+/**
+ * Admin API instance — used in /admin/* pages
+ * Automatically attaches admin token (kyc_admin_token) from localStorage.
+ */
+export const adminApi = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor — attach admin JWT token
+adminApi.interceptors.request.use(
+  (config) => {
+    if (typeof window !== 'undefined') {
+      const token = adminAuth.getToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor — handle 401 for admin API
+adminApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      adminAuth.clear();
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Default export kept for backward compatibility — maps to userApi
+export default userApi;

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '../../lib/api';
+import { userApi } from '../../lib/api';
+import { userAuth } from '../../lib/auth';
 import KycStatusBadge from '../../components/KycStatusBadge';
 
 export default function DashboardPage() {
@@ -13,19 +14,18 @@ export default function DashboardPage() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Check auth
-    const stored = localStorage.getItem('user');
-    if (!stored) {
+    // Check auth using userAuth
+    if (!userAuth.isLoggedIn()) {
       router.push('/login');
       return;
     }
-    setUser(JSON.parse(stored));
+    setUser(userAuth.getUser());
     fetchDocuments();
   }, []);
 
   const fetchDocuments = async () => {
     try {
-      const res = await api.get('/kyc/my');
+      const res = await userApi.get('/kyc/my');
       setDocuments(res.data.data);
     } catch (err) {
       console.error('Failed to fetch documents:', err);
@@ -35,8 +35,7 @@ export default function DashboardPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    userAuth.clear(); // ONLY clears user session, admin stays logged in
     router.push('/login');
   };
 

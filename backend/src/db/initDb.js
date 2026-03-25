@@ -49,6 +49,14 @@ async function initDb() {
       await pool.query(sql4);
       console.log('[Database] Migration 004_revoke_admin applied.');
     }
+
+    // Always try to run 005_indexes
+    const sqlPath5 = path.join(__dirname, 'migrations', '005_indexes.sql');
+    if (fs.existsSync(sqlPath5)) {
+      const sql5 = fs.readFileSync(sqlPath5, 'utf8');
+      await pool.query(sql5);
+      console.log('[Database] Migration 005_indexes applied.');
+    }
   } catch (err) {
     console.error('[Database] Initialization failed:', err.message);
     // We don't exit here to allow the app to try connecting later, 

@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '../../lib/api';
+import api, { adminApi } from '../../lib/api';
+import { adminAuth } from '../../lib/auth';
 import KycStatusBadge from '../../components/KycStatusBadge';
+import RiskBadge from '../../components/RiskBadge';
 
 export default function AdminListPage() {
   const router = useRouter();
@@ -13,22 +15,24 @@ export default function AdminListPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
+  const [riskFilter, setRiskFilter] = useState('');
   const limit = 20;
 
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    if (!stored) { router.push('/login'); return; }
-    const user = JSON.parse(stored);
-    if (user.role !== 'admin') { router.push('/dashboard'); return; }
+    // Check auth using adminAuth
+    if (!adminAuth.isLoggedIn()) { router.push('/login'); return; }
+    const user = adminAuth.getUser();
+    if (!user || user.role !== 'admin') { router.push('/login'); return; }
     fetchDocuments();
-  }, [page, statusFilter]);
+  }, [page, statusFilter, riskFilter]);
 
   const fetchDocuments = async () => {
     setLoading(true);
     try {
       const params = { page, limit };
       if (statusFilter) params.status = statusFilter;
-      const res = await api.get('/admin/kyc', { params });
+      if (riskFilter) params.risk = riskFilter;
+      const res = await adminApi.get('/admin/kyc', { params });
       setDocuments(res.data.data);
       setTotal(res.data.total);
     } catch (err) {
@@ -41,8 +45,7 @@ export default function AdminListPage() {
   const totalPages = Math.ceil(total / limit);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    adminAuth.clear(); // ONLY clears admin session, user stays logged in
     router.push('/login');
   };
 
@@ -96,6 +99,18 @@ export default function AdminListPage() {
               </option>
             ))}
           </select>
+
+          {/* Risk Filter */}
+          <div className='flex gap-2'>
+            {['', 'HIGH', 'MEDIUM', 'LOW'].map(r => (
+              <button key={r}
+                onClick={() => { setRiskFilter(r); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${riskFilter === r ? 'bg-white/10 text-white border-white/20' :
+                    'text-gray-400 border-white/10 hover:bg-white/5'}`}>
+                {r || 'All Risk'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Table */}
@@ -109,13 +124,14 @@ export default function AdminListPage() {
                   <th className="text-left p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Upload Date</th>
                   <th className="text-left p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                   <th className="text-left p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Similarity</th>
+                  <th className="text-left p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Risk</th>
                   <th className="text-left p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Duplicate</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="p-12 text-center">
+                    <td colSpan={7} className="p-12 text-center">
                       <svg className="animate-spin h-8 w-8 text-primary-400 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -124,7 +140,7 @@ export default function AdminListPage() {
                   </tr>
                 ) : documents.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-12 text-center text-gray-400">No submissions found</td>
+                    <td colSpan={7} className="p-12 text-center text-gray-400">No submissions found</td>
                   </tr>
                 ) : (
                   documents.map((doc) => (
@@ -144,6 +160,9 @@ export default function AdminListPage() {
                             {(doc.similarity_score * 100).toFixed(1)}%
                           </span>
                         ) : '—'}
+                      </td>
+                      <td className="p-4">
+                        <RiskBadge category={doc.similarity_category} />
                       </td>
                       <td className="p-4">
                         {doc.is_duplicate ? (

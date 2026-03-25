@@ -12,14 +12,19 @@ async function listKyc(req, res, next) {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
     const statusFilter = req.query.status || null;
+    const riskFilter = req.query.risk || null; // 'HIGH' | 'MEDIUM' | 'LOW'
 
-    // Build query with optional status filter
+    // Build query with optional status and risk filters
     let whereClause = '';
     const params = [];
 
     if (statusFilter) {
       whereClause = 'WHERE kd.status = $1';
       params.push(statusFilter);
+    }
+    if (riskFilter) {
+      whereClause += (whereClause ? ' AND' : 'WHERE') + ` kd.similarity_category = ${params.length + 1}`;
+      params.push(riskFilter);
     }
 
     // Get total count
@@ -35,13 +40,13 @@ async function listKyc(req, res, next) {
     const dataQuery = `
       SELECT kd.id, kd.user_id, u.email AS user_email, kd.original_name,
              kd.document_type, kd.extracted_name, kd.pan_number, kd.dob,
-             kd.status, kd.similarity_score, kd.is_duplicate,
+             kd.status, kd.similarity_score, kd.similarity_category, kd.is_duplicate,
              kd.uploaded_at, kd.updated_at
       FROM kyc_documents kd
       JOIN users u ON kd.user_id = u.id
       ${whereClause}
       ORDER BY kd.uploaded_at DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      LIMIT ${params.length + 1} OFFSET ${params.length + 2}
     `;
     params.push(limit, offset);
 

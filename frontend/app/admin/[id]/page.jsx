@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import api from '../../../lib/api';
+import api, { adminApi } from '../../../lib/api';
+import { adminAuth } from '../../../lib/auth';
 import KycStatusBadge from '../../../components/KycStatusBadge';
 import SimilarityAlert from '../../../components/SimilarityAlert';
+import RiskBadge from '../../../components/RiskBadge';
 
 export default function AdminKycDetailPage() {
   const router = useRouter();
@@ -20,16 +22,16 @@ export default function AdminKycDetailPage() {
   const [showOcrText, setShowOcrText] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    if (!stored) { router.push('/login'); return; }
-    const user = JSON.parse(stored);
-    if (user.role !== 'admin') { router.push('/dashboard'); return; }
+    // Check auth using adminAuth
+    if (!adminAuth.isLoggedIn()) { router.push('/login'); return; }
+    const user = adminAuth.getUser();
+    if (!user || user.role !== 'admin') { router.push('/login'); return; }
     fetchKycDetail();
   }, [kycId]);
 
   const fetchKycDetail = async () => {
     try {
-      const res = await api.get(`/admin/kyc/${kycId}`);
+      const res = await adminApi.get(`/admin/kyc/${kycId}`);
       setKycData(res.data.data);
     } catch (err) {
       console.error('Failed to fetch KYC detail:', err);
@@ -42,7 +44,7 @@ export default function AdminKycDetailPage() {
     if (!actionModal) return;
     setActionLoading(true);
     try {
-      await api.post(`/admin/kyc/${kycId}/action`, {
+      await adminApi.post(`/admin/kyc/${kycId}/action`, {
         action: actionModal,
         reason: reason || undefined,
       });
@@ -163,19 +165,33 @@ export default function AdminKycDetailPage() {
             <div className="flex items-center gap-3">
               <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    kycData.similarity_score >= 0.85 ? 'bg-red-500' :
+                  className={`h-full rounded-full transition-all duration-500 ${kycData.similarity_score >= 0.85 ? 'bg-red-500' :
                     kycData.similarity_score >= 0.5 ? 'bg-yellow-500' : 'bg-green-500'
-                  }`}
+                    }`}
                   style={{ width: `${(kycData.similarity_score || 0) * 100}%` }}
                 />
               </div>
-              <span className={`text-sm font-semibold ${
-                kycData.similarity_score >= 0.85 ? 'text-red-400' :
+              <span className={`text-sm font-semibold ${kycData.similarity_score >= 0.85 ? 'text-red-400' :
                 kycData.similarity_score >= 0.5 ? 'text-yellow-400' : 'text-green-400'
-              }`}>
+                }`}>
                 {kycData.similarity_score != null ? `${(kycData.similarity_score * 100).toFixed(1)}%` : '—'}
               </span>
+            </div>
+          </div>
+
+          {/* Risk Category */}
+          <div className='mt-3 p-4 rounded-xl bg-white/5 flex items-center justify-between'>
+            <div>
+              <p className='text-gray-400 text-xs mb-1'>Risk Category</p>
+              <RiskBadge category={kycData.similarity_category} />
+            </div>
+            <div className='text-right'>
+              <p className='text-gray-400 text-xs mb-1'>Decision Guidance</p>
+              <p className='text-xs text-gray-300'>
+                {kycData.similarity_category === 'HIGH' && 'Reject or escalate — likely duplicate'}
+                {kycData.similarity_category === 'MEDIUM' && 'Review carefully — possible match'}
+                {kycData.similarity_category === 'LOW' && 'Safe to approve if documents are valid'}
+              </p>
             </div>
           </div>
         </div>
@@ -305,10 +321,9 @@ export default function AdminKycDetailPage() {
               <button
                 onClick={handleAction}
                 disabled={actionLoading}
-                className={`flex-1 ${
-                  actionModal === 'approved' ? 'btn-success' :
+                className={`flex-1 ${actionModal === 'approved' ? 'btn-success' :
                   actionModal === 'rejected' ? 'btn-danger' : 'btn-warning'
-                } flex items-center justify-center`}
+                  } flex items-center justify-center`}
                 id="confirm-action-btn"
               >
                 {actionLoading ? (

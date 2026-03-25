@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '../../../lib/api';
+import { userAuth, adminAuth } from '../../../lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,13 +26,12 @@ export default function LoginPage() {
       const res = await api.post('/auth/login', form);
       const { token, user } = res.data;
 
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-
-      // Redirect based on role
+      // Store token and user in appropriate session based on role
       if (user.role === 'admin') {
+        adminAuth.setSession(token, user); // admin token goes to admin key
         router.push('/admin');
       } else {
+        userAuth.setSession(token, user); // user token goes to user key
         router.push('/dashboard');
       }
     } catch (err) {
