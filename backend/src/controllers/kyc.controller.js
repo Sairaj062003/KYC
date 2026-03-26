@@ -36,6 +36,7 @@ async function upload(req, res, next) {
     const registeredPhone = userRes.rows[0]?.phone_number || phoneNumberInput;
 
     // Insert a placeholder into new_submissions immediately so the frontend can poll
+    console.log(`[Pipeline] Creating placeholder for user: ${userId}`);
     const placeholderRes = await pool.query(
       `INSERT INTO new_submissions
          (user_id, file_path, original_name, status, risk_category)
@@ -44,6 +45,7 @@ async function upload(req, res, next) {
       [userId, filePath, originalName]
     );
     const submissionId = placeholderRes.rows[0].id;
+    console.log(`[Pipeline] Registered submission: ${submissionId}`);
 
     // Return 202 immediately with the submission ID for polling
     res.status(202).json({

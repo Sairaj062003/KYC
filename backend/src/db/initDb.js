@@ -73,6 +73,14 @@ async function initDb() {
       await pool.query(sql7);
       console.log('[Database] Migration 007_add_similarity_score applied.');
     }
+
+    // Always try to run 008_fix_kyc_pan_column
+    const sqlPath8 = path.join(__dirname, 'migrations', '008_fix_kyc_pan_column.sql');
+    if (fs.existsSync(sqlPath8)) {
+      const sql8 = fs.readFileSync(sqlPath8, 'utf8');
+      await pool.query(sql8);
+      console.log('[Database] Migration 008_fix_kyc_pan_column applied.');
+    }
   } catch (err) {
     console.error('[Database] Initialization failed:', err.message);
     // We don't exit here to allow the app to try connecting later, 
