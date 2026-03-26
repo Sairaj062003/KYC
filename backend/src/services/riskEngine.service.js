@@ -104,10 +104,21 @@ async function assessRisk(extractedFields, userPhone) {
     if (highestRisk === 'FRAUD') break;
   }
 
-  // If vector similarity is very high (> 0.9) but no field matches, escalate to HIGH
-  if (highestRisk === 'NO_RISK' && similarityScore > 0.90) {
+  // --- 3. Escalation based on Visual Similarity ---
+  // If visual similarity is extreme (> 0.95), force to FRAUD
+  if (similarityScore > 0.95 && priority[highestRisk] < priority.FRAUD) {
+    highestRisk = 'FRAUD';
+    if (!matchedFields.includes('visual_similarity')) matchedFields.push('visual_similarity');
+  } 
+  // If visual similarity is very high (> 0.85), force to at least HIGH
+  else if (similarityScore > 0.85 && priority[highestRisk] < priority.HIGH) {
     highestRisk = 'HIGH';
-    matchedFields.push('visual_similarity');
+    if (!matchedFields.includes('visual_similarity')) matchedFields.push('visual_similarity');
+  }
+  // If visual similarity is significant (> 0.70), force to at least MEDIUM
+  else if (similarityScore > 0.70 && priority[highestRisk] < priority.MEDIUM) {
+    highestRisk = 'MEDIUM';
+    if (!matchedFields.includes('visual_similarity')) matchedFields.push('visual_similarity');
   }
 
   return {

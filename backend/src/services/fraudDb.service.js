@@ -37,13 +37,13 @@ async function addToFraudDb(submissionId, adminId) {
     `INSERT INTO kyc_documents
        (user_id, file_path, original_name, document_type,
         extracted_name, pan_number, aadhaar_number, dob,
-        ocr_raw_text, status, similarity_category, is_duplicate)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'fraud', 'HIGH', true)
+        ocr_raw_text, status, similarity_score, similarity_category, is_duplicate)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'fraud', $10, $11, true)
      RETURNING id`,
     [
       sub.user_id, sub.file_path, sub.original_name, sub.document_type,
       sub.extracted_name, sub.pan_number, sub.aadhaar_number, sub.dob,
-      sub.ocr_raw_text,
+      sub.ocr_raw_text, sub.similarity_score || 0.0, sub.risk_category || 'HIGH',
     ]
   );
   const fraudKycId = fraudInsert.rows[0].id;
