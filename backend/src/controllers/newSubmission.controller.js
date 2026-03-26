@@ -35,15 +35,7 @@ async function listSubmissions(req, res, next) {
        FROM new_submissions ns
        JOIN users u ON ns.user_id = u.id
        ${whereClause}
-       ORDER BY
-         CASE ns.risk_category
-           WHEN 'FRAUD'   THEN 1
-           WHEN 'HIGH'    THEN 2
-           WHEN 'MEDIUM'  THEN 3
-           WHEN 'LOW'     THEN 4
-           ELSE 5
-         END,
-         ns.uploaded_at DESC
+       ORDER BY ns.uploaded_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
