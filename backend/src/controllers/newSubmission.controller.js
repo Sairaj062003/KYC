@@ -31,7 +31,8 @@ async function listSubmissions(req, res, next) {
               u.phone_number, ns.original_name, ns.document_type,
               ns.extracted_name, ns.pan_number, ns.aadhaar_number, ns.dob,
               ns.risk_category, ns.matched_fields, ns.matched_fraud_id,
-              ns.status, ns.fraud_db_added, ns.uploaded_at, ns.updated_at
+              ns.similarity_score, ns.status, ns.fraud_db_added,
+              ns.uploaded_at, ns.updated_at
        FROM new_submissions ns
        JOIN users u ON ns.user_id = u.id
        ${whereClause}
