@@ -110,7 +110,7 @@ export default function SubmissionsPage() {
                   <tr className="border-b border-white/10">
                     <th className="p-4 text-left text-xs text-gray-400 uppercase tracking-wider">User</th>
                     <th className="p-4 text-left text-xs text-gray-400 uppercase tracking-wider">Document</th>
-                    <th className="p-4 text-left text-xs text-gray-400 uppercase tracking-wider">Extracted Name</th>
+                    <th className="p-4 text-left text-xs text-gray-400 uppercase tracking-wider">Similarity</th>
                     <th className="p-4 text-left text-xs text-gray-400 uppercase tracking-wider">Risk</th>
                     <th className="p-4 text-left text-xs text-gray-400 uppercase tracking-wider">Matched Fields</th>
                     <th className="p-4 text-left text-xs text-gray-400 uppercase tracking-wider">Status</th>
@@ -132,7 +132,14 @@ export default function SubmissionsPage() {
                         <p className="text-xs text-gray-400">{doc.phone_number}</p>
                       </td>
                       <td className="p-4 text-sm text-gray-300">{doc.original_name || '—'}</td>
-                      <td className="p-4 text-sm text-white">{doc.extracted_name || '—'}</td>
+                      <td className="p-4">
+                        <span className={`text-xs font-mono font-semibold ${
+                          (doc.similarity_score || 0) > 0.8 ? 'text-red-400' : 
+                          (doc.similarity_score || 0) > 0.5 ? 'text-orange-400' : 'text-gray-400'
+                        }`}>
+                          {doc.similarity_score ? `${(doc.similarity_score * 100).toFixed(1)}%` : '—'}
+                        </span>
+                      </td>
                       <td className="p-4">
                         <RiskBadge category={doc.risk_category} />
                       </td>
