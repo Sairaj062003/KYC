@@ -57,6 +57,14 @@ async function initDb() {
       await pool.query(sql5);
       console.log('[Database] Migration 005_indexes applied.');
     }
+
+    // Always try to run 006_new_submissions (dual-database architecture)
+    const sqlPath6 = path.join(__dirname, 'migrations', '006_new_submissions.sql');
+    if (fs.existsSync(sqlPath6)) {
+      const sql6 = fs.readFileSync(sqlPath6, 'utf8');
+      await pool.query(sql6);
+      console.log('[Database] Migration 006_new_submissions applied.');
+    }
   } catch (err) {
     console.error('[Database] Initialization failed:', err.message);
     // We don't exit here to allow the app to try connecting later, 

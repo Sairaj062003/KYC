@@ -129,6 +129,10 @@ export default function AdminKycDetailPage() {
             </Link>
             <span className="font-semibold text-white">KYC Review</span>
             <KycStatusBadge status={kycData.status} />
+            <div className="ml-auto flex gap-4">
+              <Link href="/admin" className="text-sm text-gray-400 hover:text-white transition-colors">Fraud Database</Link>
+              <Link href="/admin/submissions" className="text-sm text-gray-400 hover:text-white transition-colors">New Submissions</Link>
+            </div>
           </div>
         </div>
       </nav>

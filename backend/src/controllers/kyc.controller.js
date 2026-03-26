@@ -1,16 +1,20 @@
 const pool = require('../config/db');
 const ocrService = require('../services/ocr.service');
 const llmService = require('../services/llm.service');
-const embeddingService = require('../services/embedding.service');
-const similarityService = require('../services/similarity.service');
 const { preprocessImage } = require('../services/imagePreprocessor.service');
 const { extractWithVisionLLM } = require('../services/visionExtractor.service');
 const { validateAndMerge } = require('../services/fieldValidator.service');
+const { assessRisk } = require('../services/riskEngine.service');
+const { addToFraudDb } = require('../services/fraudDb.service');
 
 /**
  * POST /kyc/upload
  * Upload a KYC document for processing. Returns 202 immediately
- * and triggers the async OCR → LLM → Embedding → Similarity pipeline.
+ * and triggers the async OCR → LLM → Risk Engine pipeline.
+ *
+ * Documents are NEVER written to kyc_documents directly.
+ * All submissions land in new_submissions first.
+ * Only FRAUD (auto) and HIGH RISK (admin-confirmed) documents move to kyc_documents.
  */
 async function upload(req, res, next) {
   try {
@@ -27,130 +31,90 @@ async function upload(req, res, next) {
       return res.status(400).json({ error: 'Valid 10-digit Indian phone number is required' });
     }
 
-    // Insert KYC document record with status = 'processing'
-    const result = await pool.query(
-      `INSERT INTO kyc_documents (user_id, file_path, original_name, status)
-       VALUES ($1, $2, $3, 'processing')
-       RETURNING id`,
-      [userId, filePath, originalName]
-    );
-
-    const kycId = result.rows[0].id;
+    // Fetch the user's registered phone number for risk matching
+    const userRes = await pool.query('SELECT phone_number FROM users WHERE id = $1', [userId]);
+    const registeredPhone = userRes.rows[0]?.phone_number || phoneNumberInput;
 
     // Return 202 immediately — processing happens asynchronously
     res.status(202).json({
-      kycId,
-      message: 'Document received, processing started',
+      message: 'Document received, processing started. Check /kyc/my for results.',
     });
 
-    // Use provided phone number for embedding
-    const phoneNumber = phoneNumberInput;
-
-    // ── Async Processing Pipeline (4-Layer OCR) ─────────────
+    // ── Async Processing Pipeline ────────────────────────────────
     setImmediate(async () => {
       try {
         // Layer 1: Image Pre-processing (OpenCV)
-        console.log(`[Pipeline] KYC ${kycId}: Layer 1 — Pre-processing image...`);
+        console.log(`[Pipeline] Upload for user ${userId}: Layer 1 — Pre-processing image...`);
         const cleanImagePath = await preprocessImage(filePath);
 
-        // Layer 2: Vision LLM Extraction (GPT-4o / Claude Haiku)
-        console.log(`[Pipeline] KYC ${kycId}: Layer 2 — Vision LLM extraction...`);
+        // Layer 2: Vision LLM Extraction (Gemini)
+        console.log(`[Pipeline] Layer 2 — Vision LLM extraction...`);
         let visionResult = null;
         try {
           visionResult = await extractWithVisionLLM(cleanImagePath);
         } catch (err) {
-          console.warn(`[Pipeline] Vision LLM failed for ${kycId}:`, err.message);
+          console.warn(`[Pipeline] Vision LLM failed:`, err.message);
         }
 
-        // Layer 3: Enhanced Tesseract + Ollama (Fallback / Supplement)
+        // Layer 3: Tesseract + Ollama Fallback
         let ollamaResult = null;
         let rawText = '';
-        
-        const isVisionComplete = visionResult?.name && 
-                                (visionResult?.pan_number || visionResult?.aadhaar_number) && 
-                                visionResult?.dob;
+        const isVisionComplete = visionResult?.name &&
+          (visionResult?.pan_number || visionResult?.aadhaar_number) &&
+          visionResult?.dob;
 
         if (!isVisionComplete) {
-          console.log(`[Pipeline] KYC ${kycId}: Layer 3 — Vision incomplete, starting Tesseract fallback...`);
+          console.log(`[Pipeline] Layer 3 — Vision incomplete, starting Tesseract fallback...`);
           rawText = await ocrService.extractText(cleanImagePath);
           ollamaResult = await llmService.extractStructuredData(rawText);
         }
 
-        // Layer 4: Validation + Regex Correction
-        console.log(`[Pipeline] KYC ${kycId}: Layer 4 — Validating and merging results...`);
+        // Layer 4: Validation + Merge
+        console.log(`[Pipeline] Layer 4 — Validating and merging results...`);
         const finalFields = validateAndMerge(visionResult, ollamaResult);
 
-        // Determine status per FR-OCR-05
-        const extractionFailed = !finalFields.name && !finalFields.pan_number && !finalFields.aadhaar_number;
-        const status = extractionFailed ? 'extraction_failed' : 'extracted';
+        // ── RISK ENGINE ───────────────────────────────────────────
+        console.log(`[Pipeline] Running Risk Engine...`);
+        const risk = await assessRisk(finalFields, registeredPhone);
+        console.log(`[Pipeline] Risk: ${risk.risk_category} | Fields: [${risk.matched_fields.join(',')}]`);
 
-        // Step 3: Update database with validated and merged data
-        await pool.query(
-          `UPDATE kyc_documents
-           SET extracted_name = $1,
-               pan_number = $2,
-               aadhaar_number = $3,
-               dob = $4,
-               document_type = $5,
-               ocr_raw_text = $6,
-               status = $7,
-               updated_at = NOW()
-           WHERE id = $8`,
-          [
-            finalFields.name,
-            finalFields.pan_number,
-            finalFields.aadhaar_number,
-            finalFields.dob,
-            finalFields.document_type,
-            rawText || null,
-            status,
-            kycId,
-          ]
-        );
-
-        if (status === 'extraction_failed') {
-          console.log(`[Pipeline] KYC ${kycId}: Extraction failed.`);
-          return;
-        }
-
-        // Step 4: Generate and store embeddings
-        console.log(`[Pipeline] KYC ${kycId}: Generating embeddings...`);
-        // Note: normalized results for embedding (keeping same object structure as before for compatibility)
-        const normalizedForEmbedding = {
-          full_name: finalFields.name,
-          pan_number: finalFields.pan_number,
-          aadhaar_number: finalFields.aadhaar_number,
-          dob: finalFields.dob,
-          document_type: finalFields.document_type
-        };
-        await embeddingService.generateAndStore(kycId, normalizedForEmbedding, phoneNumber);
-
-        // Step 5: Check for duplicates
-        console.log(`[Pipeline] KYC ${kycId}: Checking duplicates...`);
-        const similarity = await similarityService.checkDuplicates(kycId);
-
-        console.log(
-          `[Pipeline] KYC ${kycId}: Processing complete. ` +
-          `Score: ${similarity.similarity_score.toFixed(4)}, ` +
-          `Category: ${similarity.similarity_category}`
-        );
-      } catch (pipelineErr) {
-        // On any pipeline error — mark document as extraction_failed
-        console.error(
-          `[Pipeline] KYC ${kycId}: Processing failed:`,
-          pipelineErr.message,
-          pipelineErr.stack
-        );
-        try {
-          await pool.query(
-            `UPDATE kyc_documents
-             SET status = 'extraction_failed', updated_at = NOW()
-             WHERE id = $1`,
-            [kycId]
+        if (risk.risk_category === 'FRAUD') {
+          // Auto-insert to new_submissions (audit trail) then immediately move to fraud DB
+          const nsResult = await pool.query(
+            `INSERT INTO new_submissions
+               (user_id, file_path, original_name, document_type, extracted_name,
+                pan_number, aadhaar_number, dob, ocr_raw_text, risk_category,
+                matched_fraud_id, matched_fields, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'FRAUD',$10,$11,'added_to_fraud_db')
+             RETURNING id`,
+            [
+              userId, filePath, originalName, finalFields.document_type, finalFields.name,
+              finalFields.pan_number, finalFields.aadhaar_number, finalFields.dob,
+              rawText || null, risk.matched_fraud_id,
+              JSON.stringify(risk.matched_fields),
+            ]
           );
-        } catch (dbErr) {
-          console.error(`[Pipeline] Failed to update status for KYC ${kycId}:`, dbErr.message);
+          await addToFraudDb(nsResult.rows[0].id, null);
+          console.log(`[Pipeline] FRAUD detected — automatically added to fraud DB.`);
+        } else {
+          // All other risk levels → staging only (never touches kyc_documents)
+          await pool.query(
+            `INSERT INTO new_submissions
+               (user_id, file_path, original_name, document_type, extracted_name,
+                pan_number, aadhaar_number, dob, ocr_raw_text, risk_category,
+                matched_fraud_id, matched_fields, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending_review')`,
+            [
+              userId, filePath, originalName, finalFields.document_type, finalFields.name,
+              finalFields.pan_number, finalFields.aadhaar_number, finalFields.dob,
+              rawText || null, risk.risk_category, risk.matched_fraud_id,
+              JSON.stringify(risk.matched_fields),
+            ]
+          );
+          console.log(`[Pipeline] ${risk.risk_category} — Stored in staging (new_submissions).`);
         }
+      } catch (pipelineErr) {
+        console.error(`[Pipeline] Failed:`, pipelineErr.message, pipelineErr.stack);
       }
     });
   } catch (err) {
@@ -159,53 +123,57 @@ async function upload(req, res, next) {
 }
 
 /**
- * GET /kyc/status/:id
- * Get the current processing status of a KYC document.
- * Users can only check status of their own documents.
- */
-async function getStatus(req, res, next) {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId;
-
-    const result = await pool.query(
-      `SELECT kd.id, kd.status, kd.document_type, kd.extracted_name, kd.pan_number, kd.aadhaar_number, kd.dob,
-              kd.similarity_score, kd.similarity_category, kd.is_duplicate, kd.uploaded_at, kd.updated_at,
-              (SELECT reason FROM kyc_reviews WHERE kyc_id = kd.id ORDER BY created_at DESC LIMIT 1) as admin_reason
-       FROM kyc_documents kd
-       WHERE kd.id = $1 AND kd.user_id = $2`,
-      [id, userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'KYC document not found' });
-    }
-
-    res.status(200).json({ data: result.rows[0] });
-  } catch (err) {
-    next(err);
-  }
-}
-
-/**
  * GET /kyc/my
- * Get all KYC documents submitted by the authenticated user.
+ * Get all submissions by the authenticated user from the new_submissions staging table.
  */
 async function getMyDocuments(req, res, next) {
   try {
     const userId = req.user.userId;
 
     const result = await pool.query(
-      `SELECT kd.id, kd.original_name, kd.document_type, kd.extracted_name, kd.pan_number, kd.aadhaar_number, kd.status,
-              kd.similarity_score, kd.similarity_category, kd.is_duplicate, kd.uploaded_at, kd.updated_at,
-              (SELECT reason FROM kyc_reviews WHERE kyc_id = kd.id ORDER BY created_at DESC LIMIT 1) as admin_reason
-       FROM kyc_documents kd
-       WHERE kd.user_id = $1
-       ORDER BY kd.uploaded_at DESC`,
+      `SELECT ns.id, ns.original_name, ns.document_type, ns.extracted_name,
+              ns.pan_number, ns.aadhaar_number, ns.dob, ns.risk_category,
+              ns.status, ns.fraud_db_added, ns.uploaded_at, ns.updated_at,
+              (SELECT reason FROM new_submission_reviews WHERE submission_id = ns.id
+               ORDER BY created_at DESC LIMIT 1) as admin_reason
+       FROM new_submissions ns
+       WHERE ns.user_id = $1
+       ORDER BY ns.uploaded_at DESC`,
       [userId]
     );
 
     res.status(200).json({ data: result.rows });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /kyc/status/:id
+ * Poll the status of a specific submission (by new_submissions.id).
+ */
+async function getStatus(req, res, next) {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    // Check new_submissions first (all new uploads land here)
+    const result = await pool.query(
+      `SELECT ns.id, ns.status, ns.document_type, ns.extracted_name, ns.pan_number,
+              ns.aadhaar_number, ns.dob, ns.risk_category, ns.fraud_db_added,
+              ns.uploaded_at, ns.updated_at,
+              (SELECT reason FROM new_submission_reviews WHERE submission_id = ns.id
+               ORDER BY created_at DESC LIMIT 1) as admin_reason
+       FROM new_submissions ns
+       WHERE ns.id = $1 AND ns.user_id = $2`,
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    res.status(200).json({ data: result.rows[0] });
   } catch (err) {
     next(err);
   }

@@ -14,6 +14,7 @@ const authRoutes = require('./routes/auth.routes');
 const kycRoutes = require('./routes/kyc.routes');
 const adminRoutes = require('./routes/admin.routes');
 const filesRoutes = require('./routes/files.routes');
+const submissionRoutes = require('./routes/newSubmission.routes');
 
 // Import and run DB initialization
 const initDb = require('./db/initDb');
@@ -51,6 +52,7 @@ app.get('/health', (req, res) => {
 app.use('/auth', authRoutes);
 app.use('/kyc', kycRoutes);
 app.use('/admin', adminRoutes);
+app.use('/admin/submissions', submissionRoutes);
 app.use('/files', filesRoutes);
 
 // ── 404 Handler ──────────────────────────────────────────────
