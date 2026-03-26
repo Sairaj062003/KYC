@@ -95,14 +95,14 @@ async function upload(req, res, next) {
             `UPDATE new_submissions
              SET document_type=$1, extracted_name=$2, pan_number=$3, aadhaar_number=$4,
                  dob=$5, ocr_raw_text=$6, risk_category='FRAUD',
-                 matched_fraud_id=$7, matched_fields=$8,
+                 matched_fraud_id=$7, matched_fields=$8, similarity_score=$9,
                  status='added_to_fraud_db', updated_at=NOW()
-             WHERE id=$9`,
+             WHERE id=$10`,
             [
               finalFields.document_type, finalFields.name,
               finalFields.pan_number, finalFields.aadhaar_number, finalFields.dob,
               rawText || null, risk.matched_fraud_id,
-              JSON.stringify(risk.matched_fields), submissionId,
+              JSON.stringify(risk.matched_fields), risk.similarity_score, submissionId,
             ]
           );
           // Move to fraud DB automatically
@@ -114,14 +114,14 @@ async function upload(req, res, next) {
             `UPDATE new_submissions
              SET document_type=$1, extracted_name=$2, pan_number=$3, aadhaar_number=$4,
                  dob=$5, ocr_raw_text=$6, risk_category=$7,
-                 matched_fraud_id=$8, matched_fields=$9,
+                 matched_fraud_id=$8, matched_fields=$9, similarity_score=$10,
                  status='pending_review', updated_at=NOW()
-             WHERE id=$10`,
+             WHERE id=$11`,
             [
               finalFields.document_type, finalFields.name,
               finalFields.pan_number, finalFields.aadhaar_number, finalFields.dob,
               rawText || null, risk.risk_category, risk.matched_fraud_id,
-              JSON.stringify(risk.matched_fields), submissionId,
+              JSON.stringify(risk.matched_fields), risk.similarity_score, submissionId,
             ]
           );
           console.log(`[Pipeline] ${risk.risk_category} — Stored in staging (new_submissions).`);

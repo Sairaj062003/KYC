@@ -133,9 +133,9 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    {doc.is_duplicate && (
-                      <span className="text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded-full font-medium">
-                        ⚠ Duplicate
+                    {(doc.is_duplicate || doc.risk_category === 'FRAUD' || doc.risk_category === 'HIGH') && (
+                      <span className="text-xs text-red-300 bg-red-600/20 px-2 py-1 rounded-full font-semibold border border-red-600/30">
+                        ⚠ Warning
                       </span>
                     )}
                     <KycStatusBadge status={doc.status} />
@@ -148,10 +148,18 @@ export default function DashboardPage() {
                     {doc.aadhaar_number && <span className="text-gray-400">Aadhaar: <span className="text-white">{`XXXX XXXX ${doc.aadhaar_number.slice(-4)}`}</span></span>}
                   </div>
                 )}
-                {doc.admin_reason && (doc.status === 'rejected' || doc.status === 'reupload_requested') && (
-                  <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">Feedback from Admin</p>
-                    <p className="text-sm text-gray-300 italic">"{doc.admin_reason}"</p>
+                {doc.admin_reason && doc.status !== 'pending_review' && doc.status !== 'processing' && (
+                  <div className={`mt-3 p-3 rounded-lg border ${
+                    doc.status === 'approved' ? 'bg-green-500/10 border-green-500/20' :
+                    doc.status === 'reapply' || doc.status === 'reupload_requested' ? 'bg-orange-500/10 border-orange-500/20' :
+                    'bg-red-500/10 border-red-500/20'
+                  }`}>
+                    <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${
+                      doc.status === 'approved' ? 'text-green-400' :
+                      doc.status === 'reapply' || doc.status === 'reupload_requested' ? 'text-orange-400' :
+                      'text-red-400'
+                    }`}>Feedback from Admin</p>
+                    <p className="text-sm text-gray-200">"{doc.admin_reason}"</p>
                   </div>
                 )}
               </div>

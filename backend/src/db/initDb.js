@@ -65,6 +65,14 @@ async function initDb() {
       await pool.query(sql6);
       console.log('[Database] Migration 006_new_submissions applied.');
     }
+
+    // Always try to run 007_add_similarity_score
+    const sqlPath7 = path.join(__dirname, 'migrations', '007_add_similarity_score.sql');
+    if (fs.existsSync(sqlPath7)) {
+      const sql7 = fs.readFileSync(sqlPath7, 'utf8');
+      await pool.query(sql7);
+      console.log('[Database] Migration 007_add_similarity_score applied.');
+    }
   } catch (err) {
     console.error('[Database] Initialization failed:', err.message);
     // We don't exit here to allow the app to try connecting later, 

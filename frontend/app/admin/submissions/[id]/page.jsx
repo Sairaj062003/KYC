@@ -211,6 +211,7 @@ export default function SubmissionDetailPage() {
               ['PAN Number', doc.pan_number || '—'],
               ['Aadhaar Number', doc.aadhaar_number ? `XXXX XXXX ${doc.aadhaar_number.slice(-4)}` : '—'],
               ['Date of Birth', doc.dob ? new Date(doc.dob).toLocaleDateString('en-IN') : '—'],
+              ['Similarity Score', doc.similarity_score ? `${(doc.similarity_score * 100).toFixed(1)}%` : '0.0%'],
               ['Uploaded', doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleString('en-IN') : '—'],
             ].map(([label, value]) => (
               <div key={label} className="p-3 rounded-lg bg-white/5">

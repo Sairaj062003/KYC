@@ -1,24 +1,40 @@
 // backend/src/services/riskEngine.service.js
 const pool = require('../config/db');
+const { searchSimilar } = require('../config/vectorDb');
+const { embed } = require('../config/ollama');
 
 /**
  * Compare a new submission against the fraud database (kyc_documents).
- * Uses the 5-tier risk matrix (highest priority wins):
- *
- *  FRAUD    — ALL FOUR match: ID + Name + DOB + Phone
- *  HIGH     — ID ONLY matches (PAN or Aadhaar), other fields differ
- *  MEDIUM   — Name + Phone OR Name + DOB (no ID match)
- *  LOW      — Only Name OR Only Phone (no qualifying combo)
- *  NO_RISK  — Only DOB OR no fields match
+ * Uses a hybrid approach:
+ * 1. Numerical vector similarity (Qdrant)
+ * 2. 5-tier field match risk matrix (Highest priority wins)
  *
  * @param {object} extractedFields  - { name, pan_number, aadhaar_number, dob, document_type }
  * @param {string} userPhone        - Registered phone (from users table) of the new submitter
- * @returns {{ risk_category, matched_fraud_id, matched_fields }}
+ * @returns {{ risk_category, matched_fraud_id, matched_fields, similarity_score }}
  */
 async function assessRisk(extractedFields, userPhone) {
-  const { name, pan_number, aadhaar_number, dob } = extractedFields;
+  const { name, pan_number, aadhaar_number, dob, document_type } = extractedFields;
 
-  // Fetch all fraud records with their owning user's phone
+  // --- 1. Vector Similarity Search ---
+  let similarityScore = 0.0;
+  let vectorMatchId = null;
+
+  const docText = [name, pan_number, aadhaar_number, dob, document_type].filter(Boolean).join(' ');
+  if (docText) {
+    try {
+      const embedding = await embed(docText);
+      const searchResults = await searchSimilar(embedding, 1); // Get top match from kyc_embeddings
+      if (searchResults.length > 0) {
+        similarityScore = searchResults[0].score;
+        vectorMatchId = searchResults[0].payload.kyc_id;
+      }
+    } catch (err) {
+      console.warn(`[RiskEngine] Vector search failed: ${err.message}`);
+    }
+  }
+
+  // --- 2. Field Match Matrix ---
   const fraudRecords = await pool.query(
     `SELECT kd.id, kd.extracted_name, kd.pan_number, kd.aadhaar_number, kd.dob,
             u.phone_number
@@ -30,13 +46,13 @@ async function assessRisk(extractedFields, userPhone) {
 
   const priority = { FRAUD: 5, HIGH: 4, MEDIUM: 3, LOW: 2, NO_RISK: 1 };
   let highestRisk = 'NO_RISK';
-  let matchedFraudId = null;
+  let matchedFraudId = vectorMatchId; // Default to vector match if no field match higher
   let matchedFields = [];
 
   for (const fraud of fraudRecords.rows) {
     const matches = [];
 
-    // ID match — PAN or Aadhaar (case-insensitive)
+    // ID match
     const idMatch =
       (pan_number && fraud.pan_number &&
         pan_number.trim().toUpperCase() === fraud.pan_number.trim().toUpperCase()) ||
@@ -44,24 +60,24 @@ async function assessRisk(extractedFields, userPhone) {
         aadhaar_number.replace(/\s/g, '') === fraud.aadhaar_number.replace(/\s/g, ''));
     if (idMatch) matches.push('id');
 
-    // Name match — case-insensitive, trimmed
+    // Name match
     const nameMatch =
       name && fraud.extracted_name &&
       name.trim().toLowerCase() === fraud.extracted_name.trim().toLowerCase();
     if (nameMatch) matches.push('name');
 
-    // DOB match — normalize both sides to YYYY-MM-DD
+    // DOB match
     let dobMatch = false;
     if (dob && fraud.dob) {
       try {
         const newDob = new Date(dob).toISOString().split('T')[0];
         const fraudDob = new Date(fraud.dob).toISOString().split('T')[0];
         dobMatch = newDob === fraudDob;
-      } catch (_) { /* skip bad dates */ }
+      } catch (_) {}
     }
     if (dobMatch) matches.push('dob');
 
-    // Phone match — compare new submitter's registered phone with fraud record owner's phone
+    // Phone match
     const phoneMatch =
       userPhone && fraud.phone_number &&
       userPhone.replace(/\s/g, '') === fraud.phone_number.replace(/\s/g, '');
@@ -69,48 +85,36 @@ async function assessRisk(extractedFields, userPhone) {
 
     if (matches.length === 0) continue;
 
-    // Determine the risk category for this fraud record
     const hasId    = matches.includes('id');
     const hasName  = matches.includes('name');
     const hasDob   = matches.includes('dob');
     const hasPhone = matches.includes('phone');
 
     let category = 'NO_RISK';
+    if (hasId && hasName && hasDob && hasPhone) category = 'FRAUD';
+    else if (hasId) category = 'HIGH';
+    else if (hasName && (hasPhone || hasDob)) category = 'MEDIUM';
+    else if (hasName || hasPhone) category = 'LOW';
 
-    if (hasId && hasName && hasDob && hasPhone) {
-      // All four match → FRAUD
-      category = 'FRAUD';
-    } else if (hasId) {
-      // ID matches but not all four → HIGH
-      category = 'HIGH';
-    } else if (hasName && (hasPhone || hasDob)) {
-      // Name + Phone OR Name + DOB (no ID) → MEDIUM
-      category = 'MEDIUM';
-    } else if (hasName || hasPhone) {
-      // Only Name OR only Phone (no ID, no qualifying combo) → LOW
-      category = 'LOW';
-    } else {
-      // Only DOB or isolated match → NO_RISK
-      category = 'NO_RISK';
-    }
-
-    // Keep the highest risk found across all fraud records
     if (priority[category] > priority[highestRisk]) {
       highestRisk = category;
       matchedFraudId = fraud.id;
       matchedFields = matches;
     }
-
-    // Short-circuit: can't get higher than FRAUD
     if (highestRisk === 'FRAUD') break;
   }
 
-  console.log(`[RiskEngine] Assessment complete — Category: ${highestRisk}, Fields: [${matchedFields.join(',')}]`);
+  // If vector similarity is very high (> 0.9) but no field matches, escalate to HIGH
+  if (highestRisk === 'NO_RISK' && similarityScore > 0.90) {
+    highestRisk = 'HIGH';
+    matchedFields.push('visual_similarity');
+  }
 
   return {
     risk_category: highestRisk,
     matched_fraud_id: matchedFraudId,
     matched_fields: matchedFields,
+    similarity_score: similarityScore,
   };
 }
 
