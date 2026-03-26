@@ -35,9 +35,20 @@ async function upload(req, res, next) {
     const userRes = await pool.query('SELECT phone_number FROM users WHERE id = $1', [userId]);
     const registeredPhone = userRes.rows[0]?.phone_number || phoneNumberInput;
 
-    // Return 202 immediately — processing happens asynchronously
+    // Insert a placeholder into new_submissions immediately so the frontend can poll
+    const placeholderRes = await pool.query(
+      `INSERT INTO new_submissions
+         (user_id, file_path, original_name, status, risk_category)
+       VALUES ($1, $2, $3, 'processing', 'NO_RISK')
+       RETURNING id`,
+      [userId, filePath, originalName]
+    );
+    const submissionId = placeholderRes.rows[0].id;
+
+    // Return 202 immediately with the submission ID for polling
     res.status(202).json({
-      message: 'Document received, processing started. Check /kyc/my for results.',
+      kycId: submissionId,
+      message: 'Document received, processing started',
     });
 
     // ── Async Processing Pipeline ────────────────────────────────
@@ -79,42 +90,51 @@ async function upload(req, res, next) {
         console.log(`[Pipeline] Risk: ${risk.risk_category} | Fields: [${risk.matched_fields.join(',')}]`);
 
         if (risk.risk_category === 'FRAUD') {
-          // Auto-insert to new_submissions (audit trail) then immediately move to fraud DB
-          const nsResult = await pool.query(
-            `INSERT INTO new_submissions
-               (user_id, file_path, original_name, document_type, extracted_name,
-                pan_number, aadhaar_number, dob, ocr_raw_text, risk_category,
-                matched_fraud_id, matched_fields, status)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'FRAUD',$10,$11,'added_to_fraud_db')
-             RETURNING id`,
+          // Update the placeholder row with extracted data and mark as FRAUD
+          await pool.query(
+            `UPDATE new_submissions
+             SET document_type=$1, extracted_name=$2, pan_number=$3, aadhaar_number=$4,
+                 dob=$5, ocr_raw_text=$6, risk_category='FRAUD',
+                 matched_fraud_id=$7, matched_fields=$8,
+                 status='added_to_fraud_db', updated_at=NOW()
+             WHERE id=$9`,
             [
-              userId, filePath, originalName, finalFields.document_type, finalFields.name,
+              finalFields.document_type, finalFields.name,
               finalFields.pan_number, finalFields.aadhaar_number, finalFields.dob,
               rawText || null, risk.matched_fraud_id,
-              JSON.stringify(risk.matched_fields),
+              JSON.stringify(risk.matched_fields), submissionId,
             ]
           );
-          await addToFraudDb(nsResult.rows[0].id, null);
+          // Move to fraud DB automatically
+          await addToFraudDb(submissionId, null);
           console.log(`[Pipeline] FRAUD detected — automatically added to fraud DB.`);
         } else {
-          // All other risk levels → staging only (never touches kyc_documents)
+          // All other risk levels — update the placeholder in staging
           await pool.query(
-            `INSERT INTO new_submissions
-               (user_id, file_path, original_name, document_type, extracted_name,
-                pan_number, aadhaar_number, dob, ocr_raw_text, risk_category,
-                matched_fraud_id, matched_fields, status)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending_review')`,
+            `UPDATE new_submissions
+             SET document_type=$1, extracted_name=$2, pan_number=$3, aadhaar_number=$4,
+                 dob=$5, ocr_raw_text=$6, risk_category=$7,
+                 matched_fraud_id=$8, matched_fields=$9,
+                 status='pending_review', updated_at=NOW()
+             WHERE id=$10`,
             [
-              userId, filePath, originalName, finalFields.document_type, finalFields.name,
+              finalFields.document_type, finalFields.name,
               finalFields.pan_number, finalFields.aadhaar_number, finalFields.dob,
               rawText || null, risk.risk_category, risk.matched_fraud_id,
-              JSON.stringify(risk.matched_fields),
+              JSON.stringify(risk.matched_fields), submissionId,
             ]
           );
           console.log(`[Pipeline] ${risk.risk_category} — Stored in staging (new_submissions).`);
         }
       } catch (pipelineErr) {
         console.error(`[Pipeline] Failed:`, pipelineErr.message, pipelineErr.stack);
+        // Mark the placeholder as failed so the frontend stops polling
+        try {
+          await pool.query(
+            `UPDATE new_submissions SET status='extraction_failed', updated_at=NOW() WHERE id=$1`,
+            [submissionId]
+          );
+        } catch (_) { /* best-effort */ }
       }
     });
   } catch (err) {

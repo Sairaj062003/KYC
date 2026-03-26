@@ -177,37 +177,45 @@ export default function UploadPage() {
               )}
             </div>
           ) : (
-            /* Result section */
+            /* Result section — displays new_submissions data */
             <div className="glass-card p-8 space-y-6 animate-slide-up">
               <div className="flex items-center justify-between">
-                <h3 className="text-white font-semibold text-lg">Verification Result</h3>
-                <KycStatusBadge status={kycData.status} />
+                <h3 className="text-white font-semibold text-lg">Submission Received</h3>
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+                  kycData.status === 'pending_review' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                  kycData.status === 'extraction_failed' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                  kycData.status === 'added_to_fraud_db' ? 'bg-red-600/20 text-red-300 border-red-600/30' :
+                  'bg-green-500/10 text-green-400 border-green-500/20'
+                }`}>
+                  {kycData.status?.replace(/_/g, ' ') || 'submitted'}
+                </span>
               </div>
 
               {kycData.extracted_name && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl bg-white/5">
-                    <p className="text-gray-400 text-xs mb-1">Extracted Name</p>
-                    <p className="text-white font-medium">{kycData.extracted_name || '—'}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/5">
-                    <p className="text-gray-400 text-xs mb-1">PAN Number</p>
-                    <p className="text-white font-medium">{kycData.pan_number || '—'}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/5">
-                    <p className="text-gray-400 text-xs mb-1">Date of Birth</p>
-                    <p className="text-white font-medium">{kycData.dob || '—'}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/5">
-                    <p className="text-gray-400 text-xs mb-1">Document Type</p>
-                    <p className="text-white font-medium capitalize">{kycData.document_type || '—'}</p>
-                  </div>
+                  {[
+                    ['Extracted Name', kycData.extracted_name],
+                    ['Document Type', kycData.document_type],
+                    ['PAN Number', kycData.pan_number],
+                    ['Date of Birth', kycData.dob],
+                  ].map(([label, val]) => (
+                    <div key={label} className="p-4 rounded-xl bg-white/5">
+                      <p className="text-gray-400 text-xs mb-1">{label}</p>
+                      <p className="text-white font-medium capitalize">{val || '—'}</p>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {kycData.is_duplicate && (
-                <div className="p-4 rounded-xl bg-danger-500/10 border border-danger-500/20 text-danger-400 text-sm">
-                  ⚠ This document has been flagged as a potential duplicate (Similarity: {(kycData.similarity_score * 100).toFixed(1)}%).
+              {kycData.status === 'extraction_failed' && (
+                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                  ⚠ We couldn't extract information from your document. Please re-upload a clearer image.
+                </div>
+              )}
+
+              {kycData.status === 'pending_review' && (
+                <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm">
+                  ✓ Your document has been submitted and is pending admin review. Check your dashboard for updates.
                 </div>
               )}
 
