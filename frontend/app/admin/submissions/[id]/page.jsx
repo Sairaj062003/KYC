@@ -141,9 +141,11 @@ export default function SubmissionDetailPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               </svg>
               <div className="flex-1">
-                <h3 className="text-orange-300 font-semibold text-base mb-1">High Risk Alert — Matches a Known Fraud ID</h3>
+                <h3 className="text-orange-300 font-semibold text-base mb-1">
+                  High Risk Alert — {doc.similarity_score > 0 ? `${(doc.similarity_score * 100).toFixed(1)}%` : 'Field'} Match with Fraud Data
+                </h3>
                 <p className="text-orange-200/70 text-sm mb-2">
-                  This document's ID number matches a record already in the fraud database. Should it be added to the fraud database?
+                  This document matches a record in the fraud database. Should it be permanently added to the fraud database?
                 </p>
                 {(doc.fraud_match_name || doc.fraud_match_pan) && (
                   <p className="text-xs text-orange-300/60 mb-3">
