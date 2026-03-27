@@ -140,7 +140,7 @@ async function declineFraudDb(req, res, next) {
     const adminId = req.user.userId;
 
     await pool.query(
-      `UPDATE new_submissions SET status = 'pending_review', updated_at = NOW() WHERE id = $1`, [id]
+      `UPDATE new_submissions SET status = 'pending_review', risk_category = 'MEDIUM', updated_at = NOW() WHERE id = $1`, [id]
     );
     await pool.query(
       `INSERT INTO new_submission_reviews (submission_id, admin_id, action, reason)

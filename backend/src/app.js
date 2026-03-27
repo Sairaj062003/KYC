@@ -51,8 +51,8 @@ app.get('/health', (req, res) => {
 // ── API Routes ───────────────────────────────────────────────
 app.use('/auth', authRoutes);
 app.use('/kyc', kycRoutes);
-app.use('/admin', adminRoutes);
 app.use('/admin/submissions', submissionRoutes);
+app.use('/admin', adminRoutes);
 app.use('/files', filesRoutes);
 
 // ── 404 Handler ──────────────────────────────────────────────

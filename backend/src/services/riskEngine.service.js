@@ -104,23 +104,9 @@ async function assessRisk(extractedFields, userPhone) {
     if (highestRisk === 'FRAUD') break;
   }
 
-  // --- 3. Escalation based on Visual Similarity ---
-  // If visual similarity is extreme (> 0.95), force to FRAUD
-  if (similarityScore > 0.95 && priority[highestRisk] < priority.FRAUD) {
-    highestRisk = 'FRAUD';
-    if (!matchedFields.includes('visual_similarity')) matchedFields.push('visual_similarity');
-  } 
-  // If visual similarity is very high (> 0.85), force to at least HIGH
-  else if (similarityScore > 0.85 && priority[highestRisk] < priority.HIGH) {
-    highestRisk = 'HIGH';
-    if (!matchedFields.includes('visual_similarity')) matchedFields.push('visual_similarity');
-  }
-  // If visual similarity is significant (> 0.70), force to at least MEDIUM
-  else if (similarityScore > 0.70 && priority[highestRisk] < priority.MEDIUM) {
-    highestRisk = 'MEDIUM';
-    if (!matchedFields.includes('visual_similarity')) matchedFields.push('visual_similarity');
-  }
-
+  // --- 3. Visual Similarity Score Only (No Escalation) ---
+  // We still return the score for the UI, but it no longer forces HIGHER risk categories.
+  
   return {
     risk_category: highestRisk,
     matched_fraud_id: matchedFraudId,
