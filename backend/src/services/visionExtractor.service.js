@@ -65,10 +65,15 @@ async function tryGemini(imageData, imagePath) {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             let jsonString = jsonMatch ? jsonMatch[0] : text;
 
-            // 2. Simple repair for common truncation/malformed issues
-            // If it ends with a comma or doesn't end with } or ], try to close it
+            // 2. Advanced repair for truncation (handle missing quotes and braces)
             if (!jsonString.endsWith('}')) {
-                // Count opening and closing braces to attempt a basic repair
+                // Close open quote if exists
+                const quoteCount = (jsonString.match(/"/g) || []).length;
+                if (quoteCount % 2 !== 0) {
+                    jsonString += '"';
+                }
+                
+                // Close open braces
                 const opens = (jsonString.match(/\{/g) || []).length;
                 const closes = (jsonString.match(/\}/g) || []).length;
                 if (opens > closes) {
