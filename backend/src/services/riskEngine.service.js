@@ -104,14 +104,26 @@ async function assessRisk(extractedFields, userPhone) {
     if (highestRisk === 'FRAUD') break;
   }
 
-  // --- 3. Visual Similarity Score Only (No Escalation) ---
-  // We still return the score for the UI, but it no longer forces HIGHER risk categories.
-  
+  // --- 3. Final Similarity Score Mapping (Cosmetic Adjustment) ---
+  // NO_RISK: Force to 0% as requested.
+  // LOW: Map AI score to a safe range (5% - 25%) to avoid confusion.
+  // MEDIUM/HIGH/FRAUD: Keep original AI score.
+  let finalScore = similarityScore;
+  if (highestRisk === 'NO_RISK') {
+    finalScore = 0.0;
+  } else if (highestRisk === 'LOW') {
+    // Map existing similarity score (e.g. 0.9) to a safer 0.05 - 0.25 range
+    finalScore = 0.05 + (similarityScore * 0.20);
+  }
+
+  // Double check visual_similarity is NOT in matched_fields
+  matchedFields = matchedFields.filter(f => f !== 'visual_similarity');
+
   return {
     risk_category: highestRisk,
     matched_fraud_id: matchedFraudId,
     matched_fields: matchedFields,
-    similarity_score: similarityScore,
+    similarity_score: finalScore,
   };
 }
 
