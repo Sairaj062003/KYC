@@ -60,10 +60,30 @@ async function tryGemini(imageData, imagePath) {
             }
 
             let text = response.data.candidates[0].content.parts[0].text.trim();
-            // Strip markdown fences
-            text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+            
+            // 1. Robust JSON extraction (regex for first { to last })
             const jsonMatch = text.match(/\{[\s\S]*\}/);
-            const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+            let jsonString = jsonMatch ? jsonMatch[0] : text;
+
+            // 2. Simple repair for common truncation/malformed issues
+            // If it ends with a comma or doesn't end with } or ], try to close it
+            if (!jsonString.endsWith('}')) {
+                // Count opening and closing braces to attempt a basic repair
+                const opens = (jsonString.match(/\{/g) || []).length;
+                const closes = (jsonString.match(/\}/g) || []).length;
+                if (opens > closes) {
+                    jsonString += '}'.repeat(opens - closes);
+                }
+            }
+
+            try {
+                const parsed = JSON.parse(jsonString);
+                console.log('[Vision] Gemini extracted:', parsed);
+                return parsed;
+            } catch (jsonErr) {
+                console.warn('[Vision] Gemini JSON parse failed, text snippet:', text.substring(0, 50));
+                throw new Error(`Unterminated string in JSON or malformed output: ${jsonErr.message}`);
+            }
 
             console.log('[Vision] Gemini extracted:', parsed);
             return parsed;

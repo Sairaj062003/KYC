@@ -1,6 +1,4 @@
-# backend/src/scripts/preprocess.py
 import cv2, sys, numpy as np
-from PIL import Image
 import os
 
 def preprocess(input_path, output_path):
@@ -15,18 +13,27 @@ def preprocess(input_path, output_path):
         
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-    # Deskew using Hough transform logic (simplified from user snippet but improved)
+    # Deskewing logic
     # Thresholding to facilitate deskewing
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    coords = np.column_stack(np.where(binary > 0))
     
+    # Swapping (y, x) to (x, y) for OpenCV functions
+    coords = np.column_stack(np.where(binary > 0))
     if len(coords) > 0:
-        angle = cv2.minAreaRect(coords)[-1]
-        # Correct angle calculation
-        if angle < -45:
-            angle = -(90 + angle)
-        else:
-            angle = -angle
+        # Important: np.where returns (y, x), OpenCV expects (x, y)
+        coords = coords[:, ::-1] 
+        
+        rect = cv2.minAreaRect(coords)
+        angle = rect[-1]
+        
+        # Modern OpenCV angle logic (v4.5+)
+        # The angle returned is in [0, 90]
+        if angle > 45:
+            angle = angle - 90
+            
+        # Limit deskewing to small angles to avoid rotating landscape to portrait
+        if abs(angle) > 20: 
+            angle = 0
     else:
         angle = 0
         
@@ -42,18 +49,27 @@ def preprocess(input_path, output_path):
     # 2. Edge-preserving Denoising (Bilateral Filter)
     denoised = cv2.bilateralFilter(enhanced, 9, 75, 75)
 
-    # 3. Adaptive Thresholding
+    # 3. Adaptive Thresholding - Tweak parameters for cleaner text
     thresh = cv2.adaptiveThreshold(
         denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY, 11, 2
+        cv2.THRESH_BINARY, 15, 5 # slightly higher block size and C
     )
     
-    # 4. Remove small noise dots (Morphological Opening)
-    kernel = np.ones((2,2), np.uint8)
-    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+    # 4. Filter small noise blobs (New step)
+    # Tesseract "Image too small" often happens from tiny disconnected specks
+    contours, _ = cv2.findContours(cv2.bitwise_not(thresh), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    clean_mask = np.ones(thresh.shape, dtype=np.uint8) * 255
     
-    # 5. Final result
-    cv2.imwrite(output_path, opening)
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # If the blob is extremely small (noise), fill it with white in the inverted image
+        if w < 2 or h < 2 or (w * h) < 4:
+            continue
+        # Otherwise, keep it in our clean version
+        cv2.drawContours(clean_mask, [cnt], -1, 0, -1)
+    
+    # Final result is already binarized and cleaned
+    cv2.imwrite(output_path, clean_mask)
     print(f"Pre-processed image saved to {output_path}")
 
 if __name__ == '__main__':

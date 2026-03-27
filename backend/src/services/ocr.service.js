@@ -60,6 +60,19 @@ async function extractText(filePath) {
   }
 
   const preprocessedPath = await preprocessImage(imagePath);
+  
+  // FIX: Check image dimensions before Tesseract to avoid "Image too small to scale"
+  const metadata = await sharp(preprocessedPath).metadata();
+  if (metadata.width < 10 || metadata.height < 10) {
+    console.warn(`[OCR] Pre-processed image too small (${metadata.width}x${metadata.height}), skipping to original...`);
+    // Fall back to original image immediately if pre-processed one is junk
+    const result = await Tesseract.recognize(imagePath, 'eng+hin', {
+      tessedit_pageseg_mode: '6',
+      preserve_interword_spaces: '1',
+      logger: () => { }
+    });
+    return result.data.text;
+  }
 
   // FIX: PSM 6 = "Assume a single uniform block of text"
   // This is the correct mode for ID cards which are structured, card-sized
@@ -72,15 +85,20 @@ async function extractText(filePath) {
     // which print the holder's name in both Devanagari and English
     logger: () => { },
   };
-
-  let text = await withRetry(async () => {
-    const result = await Tesseract.recognize(
-      preprocessedPath,
-      'eng+hin',  // eng = English, hin = Hindi/Devanagari
-      tesseractOptions
-    );
-    return result.data.text;
-  }, 2, 1000);
+ 
+  let text = '';
+  try {
+    text = await withRetry(async () => {
+      const result = await Tesseract.recognize(
+        preprocessedPath,
+        'eng+hin', 
+        tesseractOptions
+      );
+      return result.data.text;
+    }, 2, 1000);
+  } catch (err) {
+    console.error(`[OCR] Pre-processed recognize failed: ${err.message}`);
+  }
 
   // Fallback: if preprocessed result is poor, try original image
   if (!text || text.trim().length < 50) {
